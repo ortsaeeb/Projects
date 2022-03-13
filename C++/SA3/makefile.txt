@@ -1,0 +1,11 @@
+CC=g++
+CFLAGS=-std=c++11
+
+bank:main.o Bank.o
+	g++ -std=c++11 main.o Bank.o -o out
+main.o:main.cpp
+	 $(CC) $(CFLAGS) -c main.cpp
+Bank.o:Bank.cpp
+	 $(CC) $(CFLAGS) -c Bank.cpp
+clean:
+	rm *.o out
