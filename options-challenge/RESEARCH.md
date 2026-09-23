@@ -78,3 +78,23 @@ Risking 50% per trade produced 80–90% drawdowns. Size at **≤ 10–20% risk p
 - `research/lab.py`, `research/opt.py` — data loader, option model, trade simulator
 - `research/study1_direction.py` … `study7_account.py` — each step above, reproducible
 - `tools/rsi2_scan.py` — daily signal scanner
+
+## Part 3 — Small-account version: RSI(2) with long calls under $100–150 (Options Level 2)
+
+Webull requires Options Level 3 **and $2,000 equity** for spreads, so the put-spread strategy is not
+available at $101. Tested instead: buy the nearest-money call that fits the budget on the same signal.
+Added 10 cheaper ETFs with weekly options (XLF, EEM, XLE, KRE, XLU, XLI, SLV, GDX, TLT, HYG).
+Script: `research/study8_small_calls.py`.
+
+| Version (IV 1.3×) | Train 2022–24 | Test 2025–26 |
+|---|---|---|
+| Cheap ETFs, call ≤ $100, 10 DTE | 179 trades, 43% win, **−12.8%** per trade | 132 trades, 64% win, **+25.0%** |
+| Cheap ETFs, call ≤ $100, 15 DTE | 179, 45%, **−9.2%** | 130, 65%, **+25.1%** |
+| SPY/QQQ/IWM, call ≤ $100, 5 DTE | 17, 18%, **−47.3%** | 13, 69%, +66.8% |
+| SPY/QQQ/IWM, call ≤ $150, 10 DTE | 24, 42%, +5.5% | 16, 81%, +60.0% |
+
+**Result: fails.** Every affordable-call version lost money in 2022–24 and only worked in 2025–26,
+when the bounce effect was unusually strong. Buying calls needs a bigger bounce than the average one,
+so it only pays in strong years; the put spread wins on smaller bounces, which is why it held up in
+both periods. The cheap ETFs also show a much weaker signal than SPY/QQQ in 2022–24.
+No Level-2 (calls/puts only) version under $150 passed both periods.
