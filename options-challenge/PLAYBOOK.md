@@ -36,6 +36,24 @@ A ticker is only tradable if its option passes the contract filter in §5.
 
 ---
 
+## 2b. Full pre-trade checklist (every trade is scored on all of these)
+
+| Area | What Claude checks | Source |
+|------|--------------------|--------|
+| **News / catalysts** | Overnight headlines, macro calendar (CPI, FOMC, jobs, Fed speakers, Treasury yields), earnings, analyst moves, geopolitical risk | Web search |
+| **Trend** | EMA 9 / 21 / 50 alignment, price vs VWAP, daily + 15-min + 5-min direction | Webull bars → `tools/indicators.py` |
+| **Momentum** | RSI 14 (avoid buying calls > 75 / puts < 25), MACD cross and histogram direction | `tools/indicators.py` |
+| **Volatility** | ATR 14 (sets realistic targets), Bollinger width (squeeze → breakout) | `tools/indicators.py` |
+| **Volume** | Relative volume of the trigger bar, large-order money flow, capital inflow/outflow | Webull bars, footprint, capital flow |
+| **Structure** | Swing highs/lows, HH+HL / LH+LL, break of structure, opening range, prior-day levels | `tools/indicators.py` |
+| **Options positioning** | Net gamma exposure (positive = choppy/pinning, negative = trending), gamma flip, call wall, put wall, max-OI pin, put/call volume, strikes where volume is building | Option chain → `tools/gex.py` |
+| **Contract** | Delta, premium, spread, volume, IV | Option chain → `tools/gex.py` |
+
+A trade needs **news not against it**, **trend + structure agreeing**, **volume confirming**,
+and **gamma not blocking it**. Momentum and volatility adjust the target and size.
+
+---
+
 ## 3. Setup A — Opening Range Breakout (9:35 – 9:50)
 
 **Pre-market (9:00–9:25)**
