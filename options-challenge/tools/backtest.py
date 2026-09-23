@@ -17,7 +17,8 @@ import csv
 import math
 import os
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 DATA = os.path.join(os.path.dirname(__file__), "..", "data")
 SYMBOLS = ["SPY", "QQQ", "IWM"]
@@ -55,7 +56,11 @@ def load(symbol):
     days = defaultdict(list)
     with open(os.path.join(DATA, f"{symbol}_M5.csv")) as f:
         for r in csv.DictReader(f):
-            t = datetime.fromisoformat(r["time_utc"])
+            if "time_et" in r:  # data files store Eastern time; this script works in UTC
+                t = datetime.fromisoformat(r["time_et"]).replace(tzinfo=ZoneInfo("America/New_York"))
+                t = t.astimezone(timezone.utc).replace(tzinfo=None)
+            else:
+                t = datetime.fromisoformat(r["time_utc"])
             days[t.date()].append({
                 "t": t, "min": t.hour * 60 + t.minute,
                 "o": float(r["open"]), "h": float(r["high"]), "l": float(r["low"]),

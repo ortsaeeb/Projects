@@ -7,6 +7,25 @@ Claude does the analysis and builds each order; the user approves every order in
 Webull app and sets the stop-loss there (the Webull connection only supports limit orders,
 not stop orders).
 
+> **Update after the full backtest (see `RESEARCH.md`):** the same-day setups below (sections 1–5)
+> **did not make money** out of sample in a year of 5-minute data and are kept for reference only.
+> The strategy that held up is **Strategy 1** below.
+
+## Strategy 1 — RSI(2) pullback, bull put credit spread (SPY / QQQ / IWM)
+
+| Step | Rule |
+|---|---|
+| Scan | ~15:45 ET every day: `python tools/rsi2_scan.py SPY=<px>,QQQ=<px>,IWM=<px>` |
+| Entry | RSI(2) < 10 **and** price > 200-day SMA → enter before the close |
+| Trade | Sell the put at the first strike **below** price, buy the put $1–5 lower, expiry ≈ 5 trading days out, limit order at mid |
+| Width | $1 wide while the account is under $250 · $2 under $600 · $5 above |
+| Size | Risk per trade (width − credit) × contracts ≤ **10–20%** of the account; total open risk ≤ 40% |
+| Exit | First close above the 5-day SMA (check ~15:45 ET), or close the spread the day before expiry at the latest |
+| Never | Hold the short put through expiry (assignment risk) · add to a losing spread · trade it without spread approval |
+
+Expect: 2–3 signals a month, ~75–80% winners, losing stretches (2023 was flat). With $101, one
+$1-wide spread risks ~$60 (60% of the account) — build the balance with deposits first if possible.
+
 ---
 
 ## 1. Trading windows
