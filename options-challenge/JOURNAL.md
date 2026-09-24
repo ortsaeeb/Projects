@@ -29,7 +29,7 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
 - 11:15 CT news spike (SPY +$4, QQQ +$5 in 3 min, 1M+ volume) was the only valid setup.
 - New rule: every entry gets an OCO exit placed right after the fill.
 - Afternoon: SPY/QQQ chopped in a ~$1.50 range after 12:15 CT; power-hour scan = no trend day, no trade.
-- OpenAPI market data active (Nasdaq Basic + OPRA). Bot `auto` mode ready for its first live day Fri 2026-09-25.
+- OpenAPI market data active: Nasdaq Basic (free) + OPRA real-time ($4.99/month, a fixed cost the account has to beat). Bot `auto` mode ready for its first live day Fri 2026-09-25.
 
 ## Review every 5 trades
 
