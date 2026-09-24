@@ -1,0 +1,20 @@
+{
+  "app_key": "PASTE_YOUR_APP_KEY_HERE",
+  "app_secret": "PASTE_YOUR_APP_SECRET_HERE",
+  "region_id": "us",
+  "api_endpoint": "",
+  "account_id": "PASTE_YOUR_ACCOUNT_ID_HERE",
+
+  "mode": "paper",
+
+  "risk": {
+    "max_cost_per_trade": 50,
+    "max_trades_per_day": 2,
+    "max_daily_loss": 40,
+    "take_profit_pct": 0.8,
+    "stop_loss_pct": 0.35,
+    "flatten_time_ct": "14:50"
+  },
+
+  "poll_seconds": 5
+}

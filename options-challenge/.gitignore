@@ -1,2 +1,6 @@
 research/out/
 __pycache__/
+bot/config.json
+bot/conf/
+bot/logs/
+bot/*.log
