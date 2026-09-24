@@ -30,6 +30,8 @@ Both are required, on purpose:
 - `"mode": "live"` in `config.json`
 - `--live` on the command line
 ```
+python bot.py --live auto        # start by 8:30 CT: sets its own levels from the 8:30-8:45 range on SPY+QQQ,
+                                 # trades confirmed breakouts (volume, VWAP, strong close, other ETF agrees) until 2:30 CT
 python bot.py --live watch QQQ --call-above 742.7 --put-below 740.2 --auto
 python bot.py --live manage SPY260924C00769000 --entry 0.58     # protect a position you bought yourself
 ```

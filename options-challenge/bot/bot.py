@@ -10,6 +10,8 @@ Commands (run `python bot.py -h` for all flags):
                                attach take-profit + stop (+ breakeven trail) to a position you already hold
   watch QQQ --call-above 742.7 --put-below 740.2 [--auto]
                                watch 5-min closes; alert (or with --auto, buy + manage) on a trigger
+  auto                         hands-off day: 15-min opening-range levels on SPY+QQQ, confirmed breakouts,
+                               automatic exits (what run_bot.bat / the Windows scheduled task runs)
   rsi2                         daily RSI(2) pullback scan on SPY/QQQ/IWM (the strategy that backtested well)
 
 Safety: max cost per trade, max trades per day, max daily loss, no new entries after 14:30 CT,
@@ -313,36 +315,62 @@ def manage(broker, risk, occ, qty, entry, cfg):
     trail_at = r2(entry * 1.4)  # after +40%, the stop moves to breakeven
     flatten = datetime.strptime(rk["flatten_time_ct"], "%H:%M").time()
     log(f"MANAGE {occ} x{qty} entry {entry:.2f} | take-profit {tp:.2f} | stop {stop:.2f} | breakeven after {trail_at:.2f}")
-    tp_id = broker.place_option(occ, "SELL", qty, tp)
+    st = {"tp_id": broker.place_option(occ, "SELL", qty, tp), "stop": stop}
+    errors = 0
     while True:
-        status, filled, px = broker.order_status(tp_id)
-        if "FILLED" in status and "PARTIAL" not in status:
-            pnl = (px - entry) * 100 * qty
-            log(f"TAKE-PROFIT FILLED @ {px:.2f}  P/L ${pnl:+.2f}")
-            risk.record(pnl)
-            return
-        q = broker.option_quotes([occ]).get(occ)
-        if q and q["bid"] > 0:
-            if q["bid"] >= trail_at and stop < entry:
-                stop = entry
-                log(f"bid {q['bid']:.2f} >= {trail_at:.2f}: stop raised to breakeven {stop:.2f}")
-            reason = None
-            if q["bid"] <= stop:
-                reason = f"stop hit (bid {q['bid']:.2f} <= {stop:.2f})"
-            elif now_ct().time() >= flatten:
-                reason = f"flatten time {rk['flatten_time_ct']} CT"
-            elif os.path.exists(os.path.join(HERE, "KILL")):
-                reason = "KILL file"
-            if reason:
-                log(f"EXIT: {reason}")
-                broker.cancel(tp_id)
-                px = sell_now(broker, occ, qty, cfg["poll_seconds"])
-                if px is not None:
-                    pnl = (px - entry) * 100 * qty
-                    log(f"EXITED @ {px:.2f}  P/L ${pnl:+.2f}")
-                    risk.record(pnl)
+        try:
+            if manage_step(broker, risk, occ, qty, entry, cfg, st, trail_at, flatten):
+                return
+            errors = 0
+        except Exception as e:  # a network/API hiccup must not leave the position unmanaged
+            errors += 1
+            log(f"manage: error #{errors} ({short_err(e)}) — retrying")
+            if errors >= 12:
+                log("!! too many errors — SELL MANUALLY IN WEBULL")
                 return
         time.sleep(cfg["poll_seconds"])
+
+
+def manage_step(broker, risk, occ, qty, entry, cfg, st, trail_at, flatten):
+    """One pass of the exit logic. Returns True when the position is closed (or handed to the user)."""
+    status, filled, px = broker.order_status(st["tp_id"])
+    if "FILLED" in status and "PARTIAL" not in status:
+        pnl = (px - entry) * 100 * qty
+        log(f"TAKE-PROFIT FILLED @ {px:.2f}  P/L ${pnl:+.2f}")
+        risk.record(pnl)
+        return True
+    q = broker.option_quotes([occ]).get(occ)
+    if not q or q["bid"] <= 0:
+        return False
+    if q["bid"] >= trail_at and st["stop"] < entry:
+        st["stop"] = entry
+        log(f"bid {q['bid']:.2f} >= {trail_at:.2f}: stop raised to breakeven {entry:.2f}")
+    reason = None
+    if q["bid"] <= st["stop"]:
+        reason = f"stop hit (bid {q['bid']:.2f} <= {st['stop']:.2f})"
+    elif now_ct().time() >= flatten:
+        reason = f"flatten time {flatten:%H:%M} CT"
+    elif os.path.exists(os.path.join(HERE, "KILL")):
+        reason = "KILL file"
+    if not reason:
+        return False
+    log(f"EXIT: {reason}")
+    try:
+        broker.cancel(st["tp_id"])
+    except Exception as e:
+        log(f"cancel take-profit: {short_err(e)}")
+    status, filled, px = broker.order_status(st["tp_id"])
+    if "FILLED" in status and "PARTIAL" not in status:  # filled while we were cancelling
+        pnl = (px - entry) * 100 * qty
+        log(f"TAKE-PROFIT FILLED @ {px:.2f}  P/L ${pnl:+.2f}")
+        risk.record(pnl)
+        return True
+    px = sell_now(broker, occ, qty, cfg["poll_seconds"])
+    if px is not None:
+        pnl = (px - entry) * 100 * qty
+        log(f"EXITED @ {px:.2f}  P/L ${pnl:+.2f}")
+        risk.record(pnl)
+    return True
 
 
 def pick_contract(broker, underlying, cp, max_price, expiry):
@@ -400,6 +428,141 @@ def watch(broker, risk, cfg, symbol, call_above, put_below, auto, max_price, vol
         time.sleep(20)
 
 
+AUTO_DEFAULTS = {
+    "symbols": ["SPY", "QQQ"],  # watched together; the other one must be on the same side of its VWAP
+    "max_price": 0.50,          # max option ask ($50 per contract)
+    "vol_mult": 1.5,            # breakout bar volume vs average of the previous 12 bars
+    "buffer": 0.05,             # $ beyond the opening-range high/low
+    "close_strength": 0.6,      # breakout bar must close in the top (calls) / bottom (puts) 40% of its range
+    "confirm": True,
+}
+
+
+def hm(s):
+    return datetime.strptime(s, "%H:%M").time()
+
+
+def bar_dt(t):
+    """Bar timestamp (epoch s/ms or ISO string) -> datetime in CT."""
+    utc = ZoneInfo("UTC")
+    if isinstance(t, (int, float)) or (isinstance(t, str) and t.isdigit()):
+        v = int(t)
+        return datetime.fromtimestamp(v / 1000 if v > 1e11 else v, tz=utc).astimezone(CT)
+    s = str(t).replace("Z", "+00:00")
+    if len(s) > 5 and s[-5] in "+-" and s[-3] != ":":
+        s = s[:-2] + ":" + s[-2:]
+    d = datetime.fromisoformat(s)
+    return (d if d.tzinfo else d.replace(tzinfo=utc)).astimezone(CT)
+
+
+def today_bars(broker, symbol):
+    """Today's COMPLETED regular-hours 5-min bars (08:30-15:00 CT), oldest first."""
+    now = now_ct()
+    out = []
+    for b in broker.bars_5m(symbol, 150):
+        d = bar_dt(b["time"])
+        if d.date() == now.date() and hm("08:30") <= d.time() < hm("15:00") and d + timedelta(minutes=5) <= now:
+            out.append({**b, "dt": d})
+    return out
+
+
+def vwap(bars):
+    v = sum(b["v"] for b in bars)
+    return sum((b["h"] + b["l"] + b["c"]) / 3 * b["v"] for b in bars) / v if v else bars[-1]["c"]
+
+
+def auto(broker, risk, cfg):
+    """Fully automatic day: levels = 15-min opening range, then trade confirmed breakouts until 14:30 CT."""
+    a = {**AUTO_DEFAULTS, **cfg.get("auto", {})}
+    syms = [s.upper() for s in a["symbols"]]
+    kill = os.path.join(HERE, "KILL")
+    log(f"AUTO {syms}: waiting for the 15-min opening range (08:30-08:45 CT)")
+    while now_ct().time() < hm("08:46"):
+        if os.path.exists(kill):
+            log("KILL file present — not trading today")
+            return
+        time.sleep(20)
+
+    levels = {}
+    for _ in range(20):  # ~10 min of retries (slow data / late start); none at all = market closed
+        for s in syms:
+            if s not in levels:
+                try:
+                    orb = [b for b in today_bars(broker, s) if b["dt"].time() < hm("08:45")]
+                except Exception as e:
+                    log(f"{s} bars: {short_err(e)}")
+                    continue
+                if len(orb) >= 3:
+                    levels[s] = (r2(max(b["h"] for b in orb) + a["buffer"]), r2(min(b["l"] for b in orb) - a["buffer"]))
+                    log(f"LEVELS {s}: CALL on 5-min close > {levels[s][0]} | PUT on close < {levels[s][1]}")
+        if len(levels) == len(syms):
+            break
+        time.sleep(30)
+    if not levels:
+        log("no bars for today — market closed? Nothing to do.")
+        return
+
+    seen = {}
+    while True:
+        ok, why = risk.can_enter(0)
+        if not ok:
+            log(f"AUTO done: {why}")
+            break
+        state = {}
+        try:
+            for s in levels:
+                bars = today_bars(broker, s)
+                if bars:
+                    state[s] = (bars, vwap(bars))
+        except Exception as e:
+            log(f"data error ({short_err(e)}) — retrying")
+            time.sleep(20)
+            continue
+        if len(state) < len(levels):  # need every symbol for the confirmation check
+            time.sleep(20)
+            continue
+        for s, (bars, vw) in state.items():
+            last = bars[-1]
+            if seen.get(s) == last["dt"]:
+                continue
+            seen[s] = last["dt"]
+            hi, lo = levels[s]
+            side = "C" if last["c"] > hi else "P" if last["c"] < lo else None
+            if not side:
+                log(f"{s} {last['dt']:%H:%M} close {last['c']:.2f} (range {lo}-{hi}, VWAP {vw:.2f}) -> no trigger")
+                continue
+            prev = bars[-13:-1]
+            avg_v = sum(b["v"] for b in prev) / len(prev) if prev else last["v"]
+            rng = last["h"] - last["l"]
+            strength = (last["c"] - last["l"]) / rng if rng else 0.5
+            if side == "P":
+                strength = 1 - strength
+            fails = []
+            if last["v"] < a["vol_mult"] * avg_v:
+                fails.append(f"volume {last['v']:,.0f} < {a['vol_mult']}x avg {avg_v:,.0f}")
+            if (side == "C") != (last["c"] > vw):
+                fails.append("wrong side of VWAP")
+            if strength < a["close_strength"]:
+                fails.append("weak close")
+            if a["confirm"]:
+                for o, (ob, ovw) in state.items():
+                    if o != s and (side == "C") != (ob[-1]["c"] > ovw):
+                        fails.append(f"{o} not confirming")
+            name = "CALL" if side == "C" else "PUT"
+            if fails:
+                log(f"{s} {last['dt']:%H:%M} close {last['c']:.2f} -> {name} breakout SKIPPED: {', '.join(fails)}")
+                continue
+            log(f"*** {s} {name} TRIGGER: close {last['c']:.2f}, vol {last['v']:,.0f}, VWAP {vw:.2f} ***")
+            try:
+                buy_and_manage(broker, risk, cfg, s, side, a["max_price"], now_ct().date())
+            except Exception as e:
+                log(f"!! entry error ({short_err(e)}) — CHECK WEBULL for an open position/order")
+                return
+            break  # fresh data after a trade
+        time.sleep(20)
+    log(f"AUTO summary: {risk.s['trades']} trade(s), realized P/L ${risk.s['realized']:+.2f}")
+
+
 def rsi2_scan(broker):
     from webull.data.common.category import Category
     from webull.data.common.timespan import Timespan
@@ -440,6 +603,7 @@ def main():
     p.add_argument("--put-below", type=float, required=True); p.add_argument("--auto", action="store_true")
     p.add_argument("--max-price", type=float, default=0.50); p.add_argument("--vol-mult", type=float, default=1.5)
     sub.add_parser("rsi2")
+    sub.add_parser("auto", help="hands-off day: opening-range levels, confirmed breakouts, automatic exits")
     a = ap.parse_args()
 
     cfg_path = os.path.join(HERE, "config.json")
@@ -491,6 +655,8 @@ def main():
         watch(broker, risk, cfg, a.symbol, a.call_above, a.put_below, a.auto, a.max_price, a.vol_mult)
     elif a.cmd == "rsi2":
         rsi2_scan(broker)
+    elif a.cmd == "auto":
+        auto(broker, risk, cfg)
 
 
 if __name__ == "__main__":
