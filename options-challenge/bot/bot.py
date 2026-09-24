@@ -22,11 +22,15 @@ import math
 import os
 import sys
 import time
+import logging
 import uuid
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# The Webull SDK logs full request headers (incl. access tokens) on errors; keep that out of the console.
+logging.getLogger("webull").setLevel(logging.CRITICAL)
+logging.getLogger().setLevel(logging.WARNING)
 CT = ZoneInfo("America/Chicago")
 LOG_DIR = os.path.join(HERE, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -52,6 +56,15 @@ def occ_symbol(underlying, expiry, cp, strike):
 def parse_occ(sym):
     i = len(sym) - 15
     return sym[:i], datetime.strptime(sym[i:i + 6], "%y%m%d").date(), sym[i + 6], int(sym[i + 7:]) / 1000
+
+
+def short_err(e):
+    """One-line error text without request headers/tokens."""
+    txt = str(e)
+    for marker in ("Code:", "Msg:"):
+        if marker in txt:
+            return txt[txt.index("HTTP Status") if "HTTP Status" in txt else 0:].split(", RequestID")[0]
+    return txt[:200]
 
 
 def r2(x):
@@ -135,6 +148,9 @@ class Broker:
         from webull.data.data_client import DataClient
         from webull.trade.trade_client import TradeClient
 
+        for name in list(logging.root.manager.loggerDict):
+            if name.startswith("webull"):
+                logging.getLogger(name).setLevel(logging.CRITICAL)
         api = ApiClient(cfg["app_key"], cfg["app_secret"], cfg["region_id"])
         if cfg.get("api_endpoint"):
             api.add_endpoint(cfg["region_id"], cfg["api_endpoint"])
@@ -146,6 +162,8 @@ class Broker:
 
     @staticmethod
     def _ok(res, what):
+        if isinstance(res, Exception):
+            raise RuntimeError(f"{what} failed: {res}")
         if res.status_code != 200:
             raise RuntimeError(f"{what} failed: HTTP {res.status_code} {res.text[:300]}")
         return res.json()
@@ -197,6 +215,9 @@ class Broker:
     # ---- account / orders
     def positions(self):
         return self._ok(self.trade.account_v2.get_account_position(self.account), "positions")
+
+    def accounts(self):
+        return self._ok(self.trade.account_v2.get_account_list(), "account list")
 
     def balance(self):
         return self._ok(self.trade.account_v2.get_account_balance(self.account), "balance")
@@ -409,6 +430,7 @@ def main():
     ap.add_argument("--live", action="store_true", help="place REAL orders (also needs mode=live in config.json)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("check")
+    sub.add_parser("accounts")
     p = sub.add_parser("chain"); p.add_argument("symbol"); p.add_argument("--type", default="C", choices=["C", "P"])
     p = sub.add_parser("buy"); p.add_argument("symbol"); p.add_argument("--type", required=True, choices=["C", "P"])
     p.add_argument("--max-price", type=float, default=0.50)
@@ -431,13 +453,31 @@ def main():
     risk = RiskState(cfg)
     log(f"=== {'LIVE' if live else 'PAPER'} mode | cmd={a.cmd} ===")
 
-    if a.cmd == "check":
-        print(json.dumps(broker.balance(), indent=1)[:1500])
-        spy = broker.stock_quote("SPY")
-        print("SPY:", spy)
-        k = round(spy["price"])
-        occ = occ_symbol("SPY", now_ct().date(), "C", k)
-        print(occ, broker.option_quotes([occ]))
+    if a.cmd == "accounts":
+        for acc in dict_rows(broker.accounts(), "account_id"):
+            print(f"account_id: {acc.get('account_id')}   number: {acc.get('account_number')}   "
+                  f"type: {acc.get('account_type') or acc.get('account_class')}   label: {acc.get('account_label', '')}")
+        print("\nPut the account_id of your MARGIN / options account into config.json")
+    elif a.cmd == "check":
+        try:
+            bal = broker.balance()
+            print("Balance OK:", json.dumps(bal)[:600])
+        except Exception as e:
+            print(f"Balance failed ({short_err(e)}).\nRun:  python bot.py accounts   and copy the right account_id into config.json")
+        spy = {"price": 0}
+        try:
+            spy = broker.stock_quote("SPY")
+        except Exception:
+            pass
+        occ = occ_symbol("SPY", now_ct().date(), "C", round(spy["price"] or 767))
+        try:
+            print("SPY:", broker.stock_quote("SPY"))
+        except Exception as e:
+            print("Stock quote failed:", short_err(e))
+        try:
+            print(occ, broker.option_quotes([occ]))
+        except Exception as e:
+            print("Option quote failed:", short_err(e))
     elif a.cmd == "chain":
         spot = broker.stock_quote(a.symbol)["price"]
         for s, q in broker.chain(a.symbol, now_ct().date(), a.type, spot):
@@ -454,4 +494,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        log("stopped by user (Ctrl+C)")
+    except Exception as e:
+        log(f"ERROR: {short_err(e)}")
+        sys.exit(1)
