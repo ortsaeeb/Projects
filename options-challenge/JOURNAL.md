@@ -22,11 +22,14 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
 |------|-------|--------|---------|-----------------|
 | 2026-09-23 | Starting balance | — | $101.30 | $101.30 |
 | 2026-09-24 | SPY 769C closed | +$1.88 | $103.18 | $103.18 |
+| 2026-09-24 | End of day (Webull: day P/L +$10.76; second trade details pending) | +$8.88 | $112.06 | $112.06 |
 
 ## Notes 2026-09-24
 - Morning: 6 fake breakouts (4 up, 2 down) skipped by the volume + both-ETFs rule.
 - 11:15 CT news spike (SPY +$4, QQQ +$5 in 3 min, 1M+ volume) was the only valid setup.
 - New rule: every entry gets an OCO exit placed right after the fill.
+- Afternoon: SPY/QQQ chopped in a ~$1.50 range after 12:15 CT; power-hour scan = no trend day, no trade.
+- OpenAPI market data active (Nasdaq Basic + OPRA). Bot `auto` mode ready for its first live day Fri 2026-09-25.
 
 ## Review every 5 trades
 

@@ -642,6 +642,12 @@ def main():
             print(occ, broker.option_quotes([occ]))
         except Exception as e:
             print("Option quote failed:", short_err(e))
+        try:  # the 'auto' command depends on these 5-min candles and their timestamps
+            bars = broker.bars_5m("SPY", 150)
+            b = bars[-1]
+            print(f"5-min bars OK: {len(bars)} bars, last {bar_dt(b['time']):%Y-%m-%d %H:%M} CT close {b['c']:.2f}")
+        except Exception as e:
+            print("5-min bars failed:", short_err(e))
     elif a.cmd == "chain":
         spot = broker.stock_quote(a.symbol)["price"]
         for s, q in broker.chain(a.symbol, now_ct().date(), a.type, spot):
