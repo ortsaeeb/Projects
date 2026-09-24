@@ -98,3 +98,28 @@ when the bounce effect was unusually strong. Buying calls needs a bigger bounce 
 so it only pays in strong years; the put spread wins on smaller bounces, which is why it held up in
 both periods. The cheap ETFs also show a much weaker signal than SPY/QQQ in 2022–24.
 No Level-2 (calls/puts only) version under $150 passed both periods.
+
+## Part 4 — Backtest of the live bot's `auto` rules (2026-09-24)
+
+Script: `research/study9_bot_auto.py`. Exact bot logic on 241 days of SPY+QQQ 5-min data (Oct 2025 → Sep 2026):
+15-min opening range ± $0.05, completed-bar close beyond it, volume ≥ 1.5×, VWAP side, strong close, other ETF
+confirming; same-day option ≤ $0.50; take-profit +80%, stop −35%, breakeven after +40%, flatten 14:50 CT,
+max 2 trades/day.
+
+| IV assumption | Train (Oct 25–Apr 26) | Test (May–Sep 26) |
+|---|---|---|
+| 1.0× (best case for buyers) | 234 trades, 12% win, **−$6.37/trade**, −$1,490 | 170, 13%, **−$5.88**, −$1,000 |
+| 1.15× | 232, 9%, −$7.79, −$1,807 | 170, 13%, −$6.15, −$1,045 |
+| 1.3× | 231, 9%, −$8.35, −$1,928 | 170, 9%, −$8.05, −$1,368 |
+
+- Exits at 1.15×: 305 stops, 53 breakeven, only 44 take-profits.
+- Robustness: favourable-first intrabar ordering (−$7.30 / −$6.21), no stop at all (−$12), hold to 14:50 (−$11) — all lose.
+- The signal itself has a small real tilt (underlying +5.7 bps after 60 min, 59% in the right direction) but a
+  $0.50 same-day option is far out of the money in the morning (delta ~0.1–0.15) and needs a much bigger move.
+- 18 variations tested (each filter removed; entry cut-offs 10:30/12:00 CT; time stops; opening-range size filters;
+  retest entries; $1.00 contracts; take-profit 50%/150%; stop 25%/50%; 1 trade/day). **None is profitable in both
+  periods.** Best: entries only until 10:30 CT ≈ breakeven (−$1.64 / −$0.55 per trade at 1.15×), i.e. no edge.
+
+**Conclusion: the `auto` rules lose about $6–8 per trade, ~$1,000 per six months at 2 trades/day — more than the
+whole account. Do not run it live.** Paper mode only, as a logging/discipline tool, unless a future test finds a
+version that is positive in both periods.
