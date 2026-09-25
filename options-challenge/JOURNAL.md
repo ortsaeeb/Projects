@@ -62,8 +62,8 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
   entered before a 5-min close confirmed and/or without a stop.
 - Account fell from a $120.70 high to $74.77 in ~90 minutes of overtrading.
 - 11:00 CT: QQQ/SPY broke their opening-range highs on heavy volume; QQQ 744C +$117.88 turned the day to +$101.83.
-- Final 2026-09-25: 14 trades, day +$71.47, balance $162.29 (+60% vs $101.30 start on 09-23).
-  Two trades made the day (740P +$29.88 at the open, 744C +$117.88 on the 11:00 breakout); the other 12 net −$76.
+- Final 2026-09-25: 12 trades (4 wins, 8 losses), day +$71.47, balance $162.29 (+60% vs $101.30 start on 09-23).
+  Two trades made the day (740P +$29.88 at the open, 744C +$117.88 on the 11:00 breakout); the other 10 net −$76.
 - Rules for next session: max 2 trades/day; stop placed immediately; no entries 10:30–13:30 CT; stop for the
   day after 2 losses or when green after a winner.
 
