@@ -10,6 +10,7 @@
 | 2026-09-25 | Manual (user) — breakout above 742.95 | QQQ 746C 0DTE | 0.43 | ~0.51 (trailed stop) | 1 | +7.83 | ~+18% | Yes — stop placed, trailed to breakeven then +$7 | Peaked 0.62 at 10:05 CT (QQQ 744.06), stopped on the pullback. |
 | 2026-09-25 | Manual (user) — fade from 744 | QQQ 739P 0DTE | 0.35 | ~0.37 | 1 | +1.93 | ~+5% | Yes — stop placed | Sold ~10:13 CT with QQQ at 742.7. |
 | 2026-09-25 | Manual (user) — midday call, 2 contracts | QQQ 747C 0DTE | 0.25 | ~0.19 (stop) | 2 | −12.21 | ~−24% | Partly — stop placed; low-volume midday, no confirmation | Stopped ~10:19 CT as QQQ slipped to 742.47. |
+| 2026-09-25 | Manual (user) — bought the failed pop | QQQ 744C 0DTE | 0.62 | ~0.44 | 1 | −18.12 | ~−29% | No — bought into resistance, no stop, 2/3 of account | Bought ~10:35 CT near the rejected 10:05 high; sold ~10:43 CT with QQQ 741.5. |
 
 ## Planned: $50 lottery ticket (Thu 2026-09-24, fallback Fri 2026-09-25)
 
@@ -38,6 +39,7 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
 | 2026-09-25 | QQQ 746C closed | +$7.83 | $103.17 | $120.70 |
 | 2026-09-25 | QQQ 739P closed | +$1.93 | $105.10 | $120.70 |
 | 2026-09-25 | QQQ 747C x2 stopped | −$12.21 | $92.89 | $120.70 |
+| 2026-09-25 | QQQ 744C closed | −$18.12 | $74.77 | $120.70 |
 
 ## Notes 2026-09-24
 - Morning: 6 fake breakouts (4 up, 2 down) skipped by the volume + both-ETFs rule.
@@ -45,6 +47,14 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
 - New rule: every entry gets an OCO exit placed right after the fill.
 - Afternoon: SPY/QQQ chopped in a ~$1.50 range after 12:15 CT; power-hour scan = no trend day, no trade.
 - OpenAPI market data active: Nasdaq Basic (free) + OPRA real-time ($4.99/month, a fixed cost the account has to beat). Bot `auto` mode ready for its first live day Fri 2026-09-25.
+
+## Notes 2026-09-25
+- 9 manual trades, 4 wins / 5 losses, day −$16.05. The only big winner (QQQ 740P +$29.88) came in the first
+  30 minutes with the trend. Every trade after 9:15 CT was taken in a ~$3 chop range; losers were mostly
+  entered before a 5-min close confirmed and/or without a stop.
+- Account fell from a $120.70 high to $74.77 in ~90 minutes of overtrading.
+- Rules for next session: max 2 trades/day; stop placed immediately; no entries 10:30–13:30 CT; stop for the
+  day after 2 losses or when green after a winner.
 
 ## Review every 5 trades
 
