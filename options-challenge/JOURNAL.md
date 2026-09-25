@@ -7,6 +7,7 @@
 | 2026-09-25 | Manual (user) — early call before confirmation | QQQ 745C 0DTE | 0.53 | ~0.37 | 1 | −16.12 | ~−30% | No — bought below the 742.95 confirmation level, no stop placed | Bought ~9:25 CT with QQQ ~741.3; rejected at 741.90 and faded. |
 | 2026-09-25 | Manual (user) — re-entry, same setup | QQQ 745C 0DTE | 0.54 | ~0.49 (stop) | 1 | −5.12 | ~−9% | Partly — stop placed (tight), still no confirmation | QQQ never closed above 742.95; stopped at 9:41 CT. |
 | 2026-09-25 | Manual (user) — lottery put | QQQ 733P 0DTE | 0.17 | ~0.13 | 1 | −4.12 | ~−24% | No setup | Bought ~9:43 CT in chop, sold ~9:46 CT. |
+| 2026-09-25 | Manual (user) — breakout above 742.95 | QQQ 746C 0DTE | 0.43 | ~0.51 (trailed stop) | 1 | +7.83 | ~+18% | Yes — stop placed, trailed to breakeven then +$7 | Peaked 0.62 at 10:05 CT (QQQ 744.06), stopped on the pullback. |
 
 ## Planned: $50 lottery ticket (Thu 2026-09-24, fallback Fri 2026-09-25)
 
@@ -32,6 +33,7 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
 | 2026-09-25 | QQQ 745C closed | −$16.12 | $104.58 | $120.70 |
 | 2026-09-25 | QQQ 745C (2nd) stopped | −$5.12 | $99.46 | $120.70 |
 | 2026-09-25 | QQQ 733P closed | −$4.12 | $95.34 | $120.70 |
+| 2026-09-25 | QQQ 746C closed | +$7.83 | $103.17 | $120.70 |
 
 ## Notes 2026-09-24
 - Morning: 6 fake breakouts (4 up, 2 down) skipped by the volume + both-ETFs rule.
