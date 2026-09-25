@@ -123,3 +123,6 @@ max 2 trades/day.
 **Conclusion: the `auto` rules lose about $6–8 per trade, ~$1,000 per six months at 2 trades/day — more than the
 whole account. Do not run it live.** Paper mode only, as a logging/discipline tool, unless a future test finds a
 version that is positive in both periods.
+- Added 2026-09-25: filters using yesterday's levels / the gap also lose in both periods (IV 1.15, per trade):
+  breakout must also clear prior-day high/low −$10.33 / −$5.80; only in gap direction −$9.28 / −$6.02;
+  only against the gap (gap fade) −$6.59 / −$6.30.
