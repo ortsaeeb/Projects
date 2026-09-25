@@ -13,6 +13,7 @@
 | 2026-09-25 | Manual (user) — bought the failed pop | QQQ 744C 0DTE | 0.62 | ~0.44 | 1 | −18.12 | ~−29% | No — bought into resistance, no stop, 2/3 of account | Bought ~10:35 CT near the rejected 10:05 high; sold ~10:43 CT with QQQ 741.5. |
 | 2026-09-25 | Manual (user) — re-entry at support, rode the 11:00 breakout | QQQ 744C 0DTE | 0.56 | ~1.74 | 1 | +117.88 | ~+210% | Partly — no stop for the first part; stops placed/trailed after +84% | Bought ~10:55 CT at yday close support (QQQ 741); QQQ broke the 744.6 opening-range high at 11:00 on heavy volume; option peaked ~2.52 (+350%); closed ~11:17 CT. |
 | 2026-09-25 | Manual (user) — failed-breakout put | QQQ 741P 0DTE | 0.43 | ~0.36 | 1 | −7.12 | ~−16% | Partly — half-confirmed (QQQ < 744.6, SPY held 770.1), no stop | Sold ~11:25 CT as QQQ bounced back to 744.2. |
+| 2026-09-25 | Manual (user) — far OTM call in lunch drift | QQQ 748C 0DTE | 0.35 | ~0.22 | 1 | −13.12 | ~−37% | No — $3 OTM, low volume, no stop | Sold ~11:33 CT with QQQ 745.4. |
 
 ## Planned: $50 lottery ticket (Thu 2026-09-24, fallback Fri 2026-09-25)
 
@@ -44,6 +45,7 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
 | 2026-09-25 | QQQ 744C closed | −$18.12 | $74.77 | $120.70 |
 | 2026-09-25 | QQQ 744C (2nd) closed | +$117.88 | $192.65 | $192.65 |
 | 2026-09-25 | QQQ 741P closed | −$7.12 | $185.53 | $192.65 |
+| 2026-09-25 | QQQ 748C closed | −$13.12 | $172.41 | $192.65 |
 
 ## Notes 2026-09-24
 - Morning: 6 fake breakouts (4 up, 2 down) skipped by the volume + both-ETFs rule.
