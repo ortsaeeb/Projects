@@ -11,6 +11,7 @@
 | 2026-09-25 | Manual (user) — fade from 744 | QQQ 739P 0DTE | 0.35 | ~0.37 | 1 | +1.93 | ~+5% | Yes — stop placed | Sold ~10:13 CT with QQQ at 742.7. |
 | 2026-09-25 | Manual (user) — midday call, 2 contracts | QQQ 747C 0DTE | 0.25 | ~0.19 (stop) | 2 | −12.21 | ~−24% | Partly — stop placed; low-volume midday, no confirmation | Stopped ~10:19 CT as QQQ slipped to 742.47. |
 | 2026-09-25 | Manual (user) — bought the failed pop | QQQ 744C 0DTE | 0.62 | ~0.44 | 1 | −18.12 | ~−29% | No — bought into resistance, no stop, 2/3 of account | Bought ~10:35 CT near the rejected 10:05 high; sold ~10:43 CT with QQQ 741.5. |
+| 2026-09-25 | Manual (user) — re-entry at support, rode the 11:00 breakout | QQQ 744C 0DTE | 0.56 | ~1.74 | 1 | +117.88 | ~+210% | Partly — no stop for the first part; stops placed/trailed after +84% | Bought ~10:55 CT at yday close support (QQQ 741); QQQ broke the 744.6 opening-range high at 11:00 on heavy volume; option peaked ~2.52 (+350%); closed ~11:17 CT. |
 
 ## Planned: $50 lottery ticket (Thu 2026-09-24, fallback Fri 2026-09-25)
 
@@ -40,6 +41,7 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
 | 2026-09-25 | QQQ 739P closed | +$1.93 | $105.10 | $120.70 |
 | 2026-09-25 | QQQ 747C x2 stopped | −$12.21 | $92.89 | $120.70 |
 | 2026-09-25 | QQQ 744C closed | −$18.12 | $74.77 | $120.70 |
+| 2026-09-25 | QQQ 744C (2nd) closed | +$117.88 | $192.65 | $192.65 |
 
 ## Notes 2026-09-24
 - Morning: 6 fake breakouts (4 up, 2 down) skipped by the volume + both-ETFs rule.
@@ -49,10 +51,11 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
 - OpenAPI market data active: Nasdaq Basic (free) + OPRA real-time ($4.99/month, a fixed cost the account has to beat). Bot `auto` mode ready for its first live day Fri 2026-09-25.
 
 ## Notes 2026-09-25
-- 9 manual trades, 4 wins / 5 losses, day −$16.05. The only big winner (QQQ 740P +$29.88) came in the first
+- By 10:45 CT: 9 manual trades, 4 wins / 5 losses, day −$16.05. The only big winner (QQQ 740P +$29.88) came in the first
   30 minutes with the trend. Every trade after 9:15 CT was taken in a ~$3 chop range; losers were mostly
   entered before a 5-min close confirmed and/or without a stop.
 - Account fell from a $120.70 high to $74.77 in ~90 minutes of overtrading.
+- 11:00 CT: QQQ/SPY broke their opening-range highs on heavy volume; QQQ 744C +$117.88 turned the day to +$101.83.
 - Rules for next session: max 2 trades/day; stop placed immediately; no entries 10:30–13:30 CT; stop for the
   day after 2 losses or when green after a winner.
 
