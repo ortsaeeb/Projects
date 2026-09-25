@@ -5,6 +5,7 @@
 | 2026-09-24 | News breakout (Trump–Xi rally, 11:15 CT) | SPY 769C 0DTE | 0.58 | ~0.60 | 1 | ~+1.9 | ~+3% | Partly — entry on user's own, no exit order placed | Peaked ~0.97 (+68%) at 11:40 CT when SPY hit 768.88, faded within minutes. Lesson: place OCO (take-profit + stop-limit) immediately after fill. |
 | 2026-09-25 | Manual (user) — gap-fill fade at the open | QQQ 740P 0DTE | 0.59 | ~0.89 (stop-limit 0.91/0.88) | 1 | +29.88 (day) | ~+51% | Partly — manual trade while the bot ran; stop placed and trailed | Peaked 1.33 (+125%) at 9:05 CT as QQQ hit 741.29 (just above yday close 741.10), stopped out on the bounce. Bot skipped two weak QQQ call breakouts (low volume) and was switched off at ~9:06. |
 | 2026-09-25 | Manual (user) — early call before confirmation | QQQ 745C 0DTE | 0.53 | ~0.37 | 1 | −16.12 | ~−30% | No — bought below the 742.95 confirmation level, no stop placed | Bought ~9:25 CT with QQQ ~741.3; rejected at 741.90 and faded. |
+| 2026-09-25 | Manual (user) — re-entry, same setup | QQQ 745C 0DTE | 0.54 | ~0.49 (stop) | 1 | −5.12 | ~−9% | Partly — stop placed (tight), still no confirmation | QQQ never closed above 742.95; stopped at 9:41 CT. |
 
 ## Planned: $50 lottery ticket (Thu 2026-09-24, fallback Fri 2026-09-25)
 
@@ -28,6 +29,7 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
 | 2026-09-24 | Late-day manual trade(s), details pending | −$21.24 | $90.82 | $112.06 |
 | 2026-09-25 | QQQ 740P closed | +$29.88 | $120.70 | $120.70 |
 | 2026-09-25 | QQQ 745C closed | −$16.12 | $104.58 | $120.70 |
+| 2026-09-25 | QQQ 745C (2nd) stopped | −$5.12 | $99.46 | $120.70 |
 
 ## Notes 2026-09-24
 - Morning: 6 fake breakouts (4 up, 2 down) skipped by the volume + both-ETFs rule.
