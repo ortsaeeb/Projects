@@ -591,7 +591,7 @@ def auto(broker, risk, cfg):
 
 
 GUARD_DEFAULTS = {
-    "risk_dollars": 20,               # first stop: lose at most this much per trade (all contracts together)...
+    "risk_dollars": 10,               # first stop: lose at most this much per trade (all contracts together)...
     "stop_pct": 0.35,                 # ...or, with risk_dollars set to 0, entry -35%
     "ladder": [[0.40, 0.00], [0.80, 0.30], [1.50, 0.90]],  # [peak gain reached, gain locked by the stop]
     "trail_after": 1.50,              # above +150%, also trail...
@@ -604,6 +604,7 @@ GUARD_DEFAULTS = {
     "lockout": False,                 # after the daily limit, sell any new position immediately
     "lockout_losses": 2,
     "lockout_loss": 25,
+    "warn_loss": 20,                  # just a heads-up in the log when the day's realized loss reaches this
 }
 
 
@@ -665,6 +666,10 @@ def guard(broker, risk, cfg):
             day["realized"] += pnl
             day["losses"] += pnl < 0
         day["closed"] += 1
+        if g.get("warn_loss") and -day["realized"] >= g["warn_loss"] and not day.get("warned_loss"):
+            day["warned_loss"] = True
+            log(f"!! heads-up: down ${-day['realized']:.2f} today (warning level ${g['warn_loss']}) — "
+                f"trading continues, no lockout")
         peak_pnl = (t["peak"] - t["entry"]) * 100 * t["qty"]
         log(f"CLOSED {occ} x{t['qty']} ({why}) entry {t['entry']:.2f} exit {px if px is None else f'{px:.2f}'} "
             f"P/L {'?' if pnl is None else f'${pnl:+.2f}'} (best was ${peak_pnl:+.2f})")
