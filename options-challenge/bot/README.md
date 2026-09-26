@@ -58,7 +58,14 @@ python bot.py guard             # dry run: reads your real positions, only simul
   It stays at Webull even if your PC shuts off.
 - The stop only moves up: **breakeven at +40%**, **locks +30% at +80%**, **locks +90% at +150%**, then trails
   **25% under the highest bid**.
-- If the stop gets cancelled it is put back. If you sell in the app, the Guardian removes its stop order.
+- **Selling by hand:** Webull won't let you sell while the Guardian's stop holds the contracts. Either
+  **edit the Guardian's stop** in Orders into a Limit order at the bid, or **cancel it and sell** — the Guardian
+  waits 45 seconds before putting a stop back, and cleans up once the position is gone.
+- If the stop is cancelled and you still hold the option after 45 seconds, the stop goes back on.
+- Only one Guardian window can run at a time (a second one refuses to start).
+- A `KILL` file left over from a previous day is deleted at startup; today's `KILL` file sells everything.
+- Early-close days (day after Thanksgiving, Christmas Eve): same-day options are closed at 11:50 CT.
+- If Webull can't be reached, the log says so once (then every 5 minutes); stops already placed stay active.
 - Same-day options are sold at `flatten_time_ct` (2:50 PM CT), with a warning at 2:30.
 - Warns when one trade is more than 30% of the account.
 - Heads-up in the log when the day's loss reaches $20 (`warn_loss`); trading continues.

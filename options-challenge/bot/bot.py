@@ -77,6 +77,16 @@ def r2(x):
     return round(x + 1e-9, 2)
 
 
+# NYSE calendar exceptions (update each year). Early close = 12:00 CT, same-day options expire then.
+HOLIDAYS = {"2026-11-26", "2026-12-25", "2027-01-01", "2027-01-18", "2027-02-15", "2027-03-26", "2027-05-31",
+            "2027-06-18", "2027-07-05", "2027-09-06", "2027-11-25", "2027-12-24"}
+EARLY_CLOSE = {"2026-11-27", "2026-12-24", "2027-11-26"}
+
+
+def market_day(d):
+    return d.weekday() < 5 and f"{d:%Y-%m-%d}" not in HOLIDAYS
+
+
 PENNY = {"SPY", "QQQ", "IWM"}  # $0.01 ticks at every price; most other options use $0.05 at $3 and up
 
 
@@ -623,6 +633,7 @@ GUARD_DEFAULTS = {
     "lockout_losses": 2,
     "lockout_loss": 25,
     "warn_loss": 20,                  # just a heads-up in the log when the day's realized loss reaches this
+    "manual_grace_s": 45,             # after you cancel the guard's stop in the app, wait this long before re-placing
     "startup_test": True,             # live: place+cancel a $0.01 test order when the market is open
     "warnings": True,                 # trade warnings from the journal's patterns (never block anything)
     "midday_ct": ["10:30", "13:30"],  # warn on new trades in this window
@@ -685,6 +696,27 @@ def guard(broker, risk, cfg):
     kill = os.path.join(HERE, "KILL")
     done_states = ("CANCELLED", "CANCELED", "REJECTED", "FAILED", "EXPIRED")
     tracked, day = {}, {"realized": 0.0, "losses": 0, "closed": 0, "opened": 0}
+    flat_txt = cfg["risk"]["flatten_time_ct"]
+    today = now_ct().date()
+    if f"{today:%Y-%m-%d}" in EARLY_CLOSE:
+        flatten, g["end_time_ct"], g["warn_time_ct"] = hm("11:50"), "12:00", "11:30"
+        flat_txt = "11:50"
+        log("EARLY CLOSE today (12:00 CT): same-day options will be closed at 11:50 CT")
+    if not market_day(today):
+        log("market is closed today (weekend/holiday) — the guard will just watch")
+    if os.path.exists(kill):
+        if datetime.fromtimestamp(os.path.getmtime(kill), CT).date() < today:
+            os.remove(kill)
+            log("removed an old KILL file from a previous day")
+        else:
+            log("!! KILL file is present: every option position will be SOLD. Delete bot\\KILL to trade normally.")
+    lock = os.path.join(LOG_DIR, "guard.lock")
+    try:
+        if now_ct().timestamp() - float(open(lock).read() or 0) < 30:
+            log("!! another Guardian window is already running — close this one (two would fight over the stops)")
+            return
+    except (OSError, ValueError):
+        pass
     warned, first_pass, last_beat = False, True, 0.0
     test_pending = bool(g["startup_test"] and getattr(broker, "live", False))
     if test_pending:
@@ -692,7 +724,7 @@ def guard(broker, risk, cfg):
     first = (f"first stop {g['risk_pct']:.0%} under entry, risk ${g['risk_min']}-${g['risk_max']} per trade"
              if g.get("risk_pct") else f"stop -{g['stop_pct']:.0%}")
     log(f"GUARD on: {first}, ladder {g['ladder']}, trail {g['trail_pct']:.0%} after "
-        f"+{g['trail_after']:.0%}, same-day options closed at {cfg['risk']['flatten_time_ct']} CT, "
+        f"+{g['trail_after']:.0%}, same-day options closed at {flat_txt} CT, "
         f"lockout {'ON' if g['lockout'] else 'off'}")
 
     def filled(st):
@@ -714,7 +746,8 @@ def guard(broker, risk, cfg):
             t["retry_at"] = now_ct().timestamp() + 15
             if t["fails"] == 1:
                 log(f"!! stop order rejected ({short_err(e)}) — GUARD watches {stop:.2f} itself and keeps "
-                    f"retrying the order every 15s")
+                    f"retrying the order every 15s. If you placed your own sell order in Webull, cancel it: "
+                    f"the guard needs the contracts free for its stop.")
 
     def cancel_stop(t):
         """Cancel our resting stop. Returns the fill price if it filled before the cancel went through."""
@@ -778,12 +811,18 @@ def guard(broker, risk, cfg):
             return
         close(occ, t, px, why)
 
+    errs = {"n": 0, "last": 0.0}
     while True:
         now = now_ct()
         if now.time() >= hm(g["end_time_ct"]):
             break
         try:
-            if test_pending and now.weekday() < 5 and hm("08:30") <= now.time() < hm("14:45"):
+            with open(lock, "w") as f:
+                f.write(str(now.timestamp()))
+        except OSError:
+            pass
+        try:
+            if test_pending and market_day(now.date()) and hm("08:30") <= now.time() < hm("11:30" if flatten < hm("12:00") else "14:45"):
                 test_pending = False
                 ok = order_test(broker, with_stop=False)
                 if ok:
@@ -874,9 +913,14 @@ def guard(broker, risk, cfg):
                         continue
                     if st in done_states:
                         if not t.get("cancelling"):
-                            log(f"!! the stop on {occ} was {st.lower()}")
+                            if st.startswith("CANCEL"):
+                                t["retry_at"] = now.timestamp() + g["manual_grace_s"]
+                                log(f"!! the stop on {occ} was cancelled in the app — selling by hand? Go ahead. "
+                                    f"If you still hold it in {g['manual_grace_s']}s the stop goes back on.")
+                            else:
+                                log(f"!! the stop on {occ} was {st.lower()} by Webull")
                         t["oid"] = None
-                    elif st and not day.get("stop_ok"):
+                    elif st and not st.startswith("PENDING") and not day.get("stop_ok"):
                         day["stop_ok"] = True
                         log(f"STOP ORDER CONFIRMED — Webull shows the stop on {occ} as {st}. Stops work.")
                 # a position that was already under its stop when GUARD started: don't dump it on sight
@@ -891,17 +935,19 @@ def guard(broker, risk, cfg):
                     place_stop(occ, t)
                 # same-day options: out before the close
                 if parse_occ(occ)[1] == now.date() and now.time() >= flatten:
-                    exit_now(occ, t, f"flatten {cfg['risk']['flatten_time_ct']} CT")
+                    exit_now(occ, t, f"flatten {flat_txt} CT")
                     continue
                 if os.path.exists(kill):
                     exit_now(occ, t, "KILL file")
                     continue
                 if bid is None:
                     continue
-                # ratchet the stop up (never down)
-                if bid > t["peak"]:
-                    t["peak"] = bid
-                new = min(guard_stop(t, g), r2(bid - 0.02))
+                # ratchet the stop up (never down); the peak only counts a bid seen on two checks in a row
+                confirmed = min(bid, t.get("prev_bid", bid))
+                t["prev_bid"] = bid
+                if confirmed > t["peak"]:
+                    t["peak"] = confirmed
+                new = min(guard_stop(t, g), r2(confirmed - 0.02))
                 if new >= t["stop"] + max(0.02, 0.03 * t["stop"]):
                     old = t["stop"]
                     got = cancel_stop(t)
@@ -920,15 +966,27 @@ def guard(broker, risk, cfg):
             if not warned and now.time() >= hm(g["warn_time_ct"]) and any(
                     parse_occ(o)[1] == now.date() for o in live):
                 warned = True
-                log(f"!! same-day options will be closed at {cfg['risk']['flatten_time_ct']} CT")
+                log(f"!! same-day options will be closed at {flat_txt} CT")
             if now.timestamp() - last_beat >= 300:
                 last_beat = now.timestamp()
                 what = ", ".join(f"{o} stop {tracked[o]['stop']:.2f}{'' if tracked[o].get('oid') else ' (watching)'}"
                                  for o in live) or "no open option positions"
                 log(f"GUARD alive — {what}")
+            if errs["n"]:
+                log(f"connection back after {errs['n']} failed checks")
+                errs["n"] = 0
         except Exception as e:
-            log(f"guard: error ({short_err(e)}) — retrying")
+            errs["n"] += 1
+            if errs["n"] == 1 or now.timestamp() - errs["last"] >= 300:
+                errs["last"] = now.timestamp()
+                log(f"!! guard error ({short_err(e)}) — stop orders already placed stay active at Webull. "
+                    f"Retrying every {cfg['poll_seconds']}s. If this keeps showing, restart the guard "
+                    f"(approve the 2FA prompt on your phone if asked).")
         time.sleep(cfg["poll_seconds"])
+    try:
+        os.remove(lock)
+    except OSError:
+        pass
     log(f"GUARD summary: {day['closed']} closed, realized ${day['realized']:+.2f}, losses {day['losses']}. "
         f"Stop orders are DAY orders: run guard again tomorrow for anything held overnight.")
 
@@ -956,17 +1014,25 @@ def order_test(broker, with_stop=True):
         except Exception as e:
             log(f"{label} FAILED — Webull rejected the order: {short_err(e)}")
             return False
-        time.sleep(2)
-        st, _, _ = broker.order_status(oid)
-        log(f"{label}: accepted, status {st or '?'}")
-        log(f"{label}: order detail {detail(oid)}")
         try:
-            broker.cancel(oid)
+            time.sleep(2)
+            st, _, _ = broker.order_status(oid)
+            log(f"{label}: accepted, status {st or '?'}")
+            log(f"{label}: order detail {detail(oid)}")
         except Exception as e:
-            log(f"{label}: cancel error {short_err(e)}")
+            log(f"{label}: status error {short_err(e)}")
+        finally:
+            try:
+                broker.cancel(oid)
+            except Exception as e:
+                log(f"{label}: cancel error {short_err(e)}")
+        st = ""
         for _ in range(5):
             time.sleep(1)
-            st, _, _ = broker.order_status(oid)
+            try:
+                st, _, _ = broker.order_status(oid)
+            except Exception:
+                continue
             if st in done_states:
                 log(f"{label} PASSED — placed and cancelled (status {st})")
                 return True
@@ -977,8 +1043,8 @@ def order_test(broker, with_stop=True):
         return False
 
     now = now_ct()
-    exp = now.date()
-    while exp.weekday() >= 5:
+    exp = now.date() + timedelta(days=7)  # a week out: an at-the-money call is worth dollars, never $0.01
+    while not market_day(exp):
         exp += timedelta(days=1)
     spot = broker.stock_quote("SPY")["price"]
     if not spot:
@@ -1068,7 +1134,16 @@ def main():
     cfg_path = os.path.join(HERE, "config.json")
     if not os.path.exists(cfg_path):
         sys.exit("Missing bot/config.json — copy config.example.json to config.json and fill in your keys.")
-    cfg = json.load(open(cfg_path))
+    try:
+        cfg = json.load(open(cfg_path, encoding="utf-8-sig"))
+    except json.JSONDecodeError as e:
+        sys.exit(f"config.json has a typo at line {e.lineno}, column {e.colno}: {e.msg}. "
+                 f"Check for a missing comma or quote.")
+    cfg.setdefault("poll_seconds", 5)
+    cfg.setdefault("risk", {})
+    for k, v in {"max_cost_per_trade": 50, "max_trades_per_day": 2, "max_daily_loss": 40, "take_profit_pct": 0.8,
+                 "stop_loss_pct": 0.35, "flatten_time_ct": "14:50"}.items():
+        cfg["risk"].setdefault(k, v)
     live = a.live and cfg.get("mode") == "live"
     if a.live and not live:
         sys.exit('--live given but config.json has "mode": "paper". Refusing to trade live.')

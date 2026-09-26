@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bot
 bot.LOG_DIR = tempfile.mkdtemp()
+bot.HERE = tempfile.mkdtemp()  # KILL file lives here during tests
 clock = [None]
 bot.now_ct = lambda: clock[0]
 OCC = "QQQ260928C00744000"
@@ -49,9 +50,9 @@ class Fake:
         return o["status"], (o["qty"] if o["status"] == "FILLED" else 0), (0 if self.zero_px else o["px"])
     def resting(self): return [o for o in self.orders.values() if o["status"] == "SUBMITTED"]
 
-def run(F_, start="10:50", end="10:58"):
+def run(F_, start="10:50", end="10:58", day=(2026, 9, 28)):
     global F; F = F_
-    clock[0] = datetime(2026, 9, 28, *map(int, start.split(":")), tzinfo=bot.CT)
+    clock[0] = datetime(*day, *map(int, start.split(":")), tzinfo=bot.CT)
     cfg = {"risk": {"max_cost_per_trade": 50, "max_trades_per_day": 2, "max_daily_loss": 40,
                     "take_profit_pct": 0.8, "stop_loss_pct": 0.35, "flatten_time_ct": "14:50"},
            "poll_seconds": 5, "guard": {"end_time_ct": end}}
@@ -170,6 +171,59 @@ FLr = FL([1.10] * 200, held=0, reject_sells=0); FLr.place_option = lambda *a, **
 L = run(FLr, start="08:29", end="08:32")
 check("17 guard: a failed order test is reported and the guard keeps running",
       any("ORDER TEST FAILED" in l for l in L) and any("GUARD summary" in l for l in L))
+
+# selling by hand: cancel the guard's stop in the app, then sell within the grace period
+def cancel_then_sell(f):
+    for o in f.orders.values():
+        if o["status"] == "SUBMITTED": o["status"] = "CANCELLED"
+    f.events[f.k + 3] = lambda g: setattr(g, "held", 0)
+F18 = Fake([0.70] * 60, events={4: cancel_then_sell})
+L = run(F18)
+check("18 cancel the stop + sell by hand: guard waits, doesn't fight, cleans up",
+      any("selling by hand" in l for l in L) and any("sold in the app" in l for l in L) and not F18.resting()
+      and sum("PROTECTED" in l for l in L) == 1)
+
+# a one-tick bid spike must not drag the stop up
+F19 = Fake([0.56, 0.56, 0.85, 0.56, 0.57, 0.56, 0.58, 0.56] + [0.57] * 30)
+L = run(F19)
+check("19 one-tick spike ignored (no move to breakeven)", not any("TRAIL" in l for l in L))
+F19b = Fake([0.56, 0.56, 0.85, 0.85, 0.86] + [0.86] * 30)
+L = run(F19b)
+check("19b a real move (two checks) still trails", any("TRAIL" in l for l in L))
+
+# KILL file: yesterday's is removed, today's is obeyed
+kill = os.path.join(bot.HERE, "KILL")
+open(kill, "w").close(); t0 = datetime(2026, 9, 25, 12, 0).timestamp(); os.utime(kill, (t0, t0))
+F20 = Fake([0.56] * 60); L = run(F20)
+check("20 old KILL file from a previous day is removed", any("removed an old KILL" in l for l in L)
+      and not os.path.exists(kill) and len(F20.resting()) == 1)
+open(kill, "w").close()
+t1 = datetime(2026, 9, 28, 10, 0, tzinfo=bot.CT).timestamp(); os.utime(kill, (t1, t1))
+F20b = Fake([0.56] * 60); L = run(F20b)
+check("20b today's KILL file is obeyed (position sold)", any("KILL file is present" in l for l in L) and F20b.held == 0)
+os.remove(kill)
+
+# only one guard at a time
+open(os.path.join(bot.LOG_DIR, "guard.lock"), "w").write(str(datetime(2026, 9, 28, 10, 49, 50, tzinfo=bot.CT).timestamp()))
+F21 = Fake([0.56] * 20); L = run(F21)
+check("21 a second guard window refuses to start", any("already running" in l for l in L) and not F21.orders)
+os.remove(os.path.join(bot.LOG_DIR, "guard.lock"))
+
+# early close day (day after Thanksgiving): same-day options out at 11:50 CT
+OCC_SAVE = OCC
+OCC = "QQQ261127C00744000"
+F22 = Fake([0.56] * 200); L = run(F22, start="11:45", end="23:00", day=(2026, 11, 27))
+check("22 early close: flattened at 11:50 and guard stops at 12:00", any("EARLY CLOSE" in l for l in L)
+      and any("CLOSED" in l and "11:50" in l for l in L) and F22.held == 0)
+OCC = OCC_SAVE
+
+# the order test uses a contract at least a week out
+lines = []; bot.log = lambda m: (lines.append(m), orig(m))
+clock[0] = datetime(2026, 9, 28, 8, 40, tzinfo=bot.CT)
+bot.testorder(T())
+bot.log = orig
+occ_used = [l.split()[7] for l in lines if "placing BUY" in l][0]
+check("23 order test contract expires 7+ days out", bot.parse_occ(occ_used)[1] >= datetime(2026, 10, 5).date())
 
 # option_positions parsing with the real Webull JSON shape (from the account, Friday)
 raw = [{"currency":"USD","quantity":"1","cost":"56.00","legs":[{"symbol":"QQQ","cost":"0.56","instrument_type":"OPTION",
