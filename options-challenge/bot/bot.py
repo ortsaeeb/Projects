@@ -591,9 +591,10 @@ def auto(broker, risk, cfg):
 
 
 GUARD_DEFAULTS = {
-    "risk_dollars": 10,               # first stop: lose at most this much per trade (all contracts together)...
-    "risk_tiers": [[0.60, 20]],       # [option price at or above, risk $]: pricier contracts get a wider stop
-    "stop_pct": 0.35,                 # ...or, with risk_dollars set to 0, entry -35%
+    "risk_pct": 0.30,                 # first stop: aim 30% under the entry...
+    "risk_min": 10,                   # ...but risk at least $10 per trade (all contracts together)
+    "risk_max": 20,                   # ...and never more than $20
+    "stop_pct": 0.35,                 # used only when risk_pct is set to 0
     "ladder": [[0.40, 0.00], [0.80, 0.30], [1.50, 0.90]],  # [peak gain reached, gain locked by the stop]
     "trail_after": 1.50,              # above +150%, also trail...
     "trail_pct": 0.25,                # ...25% below the highest bid
@@ -612,11 +613,9 @@ GUARD_DEFAULTS = {
 def guard_stop(t, g):
     """Stop price for a tracked position from its entry and highest bid (never lower than before)."""
     gain = t["peak"] / t["entry"] - 1
-    if g.get("risk_dollars"):
-        risk = g["risk_dollars"]
-        for price, dollars in sorted(g.get("risk_tiers") or []):
-            if t["entry"] >= price:
-                risk = dollars
+    if g.get("risk_pct"):
+        cost = t["entry"] * 100 * t["qty"]
+        risk = min(g["risk_max"], max(g["risk_min"], g["risk_pct"] * cost))
         stop = max(0.05, t["entry"] - risk / (100 * t["qty"]))
     else:
         stop = t["entry"] * (1 - g["stop_pct"])
@@ -636,7 +635,8 @@ def guard(broker, risk, cfg):
     kill = os.path.join(HERE, "KILL")
     tracked, day = {}, {"realized": 0.0, "losses": 0, "closed": 0}
     warned = False
-    first = f"${g['risk_dollars']} risk per trade" if g.get("risk_dollars") else f"stop -{g['stop_pct']:.0%}"
+    first = (f"first stop {g['risk_pct']:.0%} under entry, risk ${g['risk_min']}-${g['risk_max']} per trade"
+             if g.get("risk_pct") else f"stop -{g['stop_pct']:.0%}")
     log(f"GUARD on: {first}, ladder {g['ladder']}, trail {g['trail_pct']:.0%} after "
         f"+{g['trail_after']:.0%}, same-day options closed at {cfg['risk']['flatten_time_ct']} CT, "
         f"lockout {'ON' if g['lockout'] else 'off'}")
