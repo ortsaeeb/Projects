@@ -36,6 +36,14 @@ python bot.py --live watch QQQ --call-above 742.7 --put-below 740.2 --auto
 python bot.py --live manage SPY260924C00769000 --entry 0.58     # protect a position you bought yourself
 ```
 
+## 3a. Order test (run once before relying on the bot)
+```
+python bot.py --live testorder
+```
+Places a **$0.01 buy** on an at-the-money SPY call (it cannot fill) and cancels it. If you hold an option, it also
+places and cancels a **$0.01 stop-limit sell** on it (don't run it while the guard is running). Ends with
+`RESULT: orders work` — or the exact Webull error to send over.
+
 ## 3b. Trade Guardian (recommended way to use the bot)
 You pick the trades in the Webull app; the Guardian manages every exit.
 ```
@@ -52,6 +60,8 @@ python bot.py guard             # dry run: reads your real positions, only simul
 - Same-day options are sold at `flatten_time_ct` (2:50 PM CT), with a warning at 2:30.
 - Warns when one trade is more than 30% of the account.
 - Heads-up in the log when the day's loss reaches $20 (`warn_loss`); trading continues.
+- Warnings on a new trade (never blocks): midday 10:30–1:30 CT, re-entry within 10 min of a loss, trade #4+ of
+  the day, same-day strike more than 0.35% out of the money. Turn off with `"warnings": false`.
 - Optional lockout (off by default): after 2 losses or −$25 in a day, any new position is sold right away.
 
 Change any of these by adding a `"guard"` block to `config.json`, for example:

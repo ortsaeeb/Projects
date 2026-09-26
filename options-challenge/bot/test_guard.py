@@ -112,6 +112,50 @@ F9 = Fake([0.56] * 30, events={2: user_cancel})
 L = run(F9)
 check("9 stop cancelled in the app is put back", any("was cancelled" in l for l in L) and len(F9.resting()) == 1)
 
+# smart warnings: a far out-of-the-money midday re-entry after a loss
+class FW(Fake):
+    def stock_quote(self, sym): return {"price": 741.0}
+def reopen(f): f.held = 1
+FWn = FW([0.56, 0.45, 0.40, 0.36, 0.30, 0.30, 0.30, 0.30, 0.30, 0.30], events={6: reopen})
+L = run(FWn, start="11:00", end="11:02")
+check("12 warnings: midday + re-entry + far from the money",
+      any("MIDDAY TRADE" in l for l in L) and any("RE-ENTRY" in l for l in L) and any("FAR FROM THE MONEY" in l for l in L))
+FWq = FW([0.56] * 20)
+L = run(FWq, start="09:00", end="09:01")
+check("13 no warnings for a position found at startup in the morning", not any("MIDDAY" in l or "RE-ENTRY" in l for l in L))
+
+# testorder: fake live broker that accepts, reports and cancels orders
+class T(bot.Broker):
+    def __init__(self, reject=False, hold=False):
+        self.live, self.account, self.reject, self.hold, self.orders = True, "ACC123", reject, hold, {}
+        me = self
+        class OV2:
+            def get_order_detail(_, acc, oid):
+                class R:
+                    status_code = 200
+                    def json(_): return {"account_id": "ACC123", "orders": [{"status": me.orders[oid]}]}
+                return R()
+        class TR: order_v2 = OV2()
+        self.trade = TR()
+    def stock_quote(self, s): return {"price": 767.4}
+    def option_quotes(self, occs): return {o: {"bid": 1.10, "ask": 1.12} for o in occs}
+    def option_positions(self): return {"QQQ260928C00744000": {"qty": 1, "cost": 0.5}} if self.hold else {}
+    def place_option(self, occ, side, qty, limit, stop=None):
+        if self.reject: raise RuntimeError("HTTP 400 invalid order type")
+        oid = f"t{len(self.orders)}"; self.orders[oid] = "SUBMITTED"; return oid
+    def cancel(self, oid): self.orders[oid] = "CANCELLED"
+    def order_status(self, oid): return self.orders[oid], 0, 0
+clock[0] = datetime(2026, 9, 28, 8, 10, tzinfo=bot.CT)
+lines = []; orig = bot.log; bot.log = lambda m: (lines.append(m), orig(m))
+F = Fake([1]); bot.testorder(T(hold=True))
+bot.log = orig
+check("14 testorder places and cancels both test orders", any("TEST 1" in l and "PASSED" in l for l in lines)
+      and any("TEST 2" in l and "PASSED" in l for l in lines) and not any("ACC123" in l for l in lines))
+lines = []; bot.log = lambda m: (lines.append(m), orig(m))
+bot.testorder(T(reject=True))
+bot.log = orig
+check("15 testorder reports a rejection clearly", any("FAILED" in l for l in lines))
+
 # option_positions parsing with the real Webull JSON shape (from the account, Friday)
 raw = [{"currency":"USD","quantity":"1","cost":"56.00","legs":[{"symbol":"QQQ","cost":"0.56","instrument_type":"OPTION",
         "option_type":"CALL","option_expire_date":"2026-09-25","option_exercise_price":"744"}],"symbol":"QQQ",

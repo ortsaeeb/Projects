@@ -10,6 +10,7 @@ Commands (run `python bot.py -h` for all flags):
                                attach take-profit + stop (+ breakeven trail) to a position you already hold
   watch QQQ --call-above 742.7 --put-below 740.2 [--auto]
                                watch 5-min closes; alert (or with --auto, buy + manage) on a trigger
+  testorder                    places and cancels $0.01 orders that cannot fill, to prove Webull accepts the bot's orders
   guard                        trade guardian: every option you buy in Webull gets a stop order at once, the stop
                                ratchets up (breakeven at +40%, locks +30% at +80%, +90% at +150%, then trails 25%),
                                same-day options are closed at flatten time
@@ -622,7 +623,40 @@ GUARD_DEFAULTS = {
     "lockout_losses": 2,
     "lockout_loss": 25,
     "warn_loss": 20,                  # just a heads-up in the log when the day's realized loss reaches this
+    "warnings": True,                 # trade warnings from the journal's patterns (never block anything)
+    "midday_ct": ["10:30", "13:30"],  # warn on new trades in this window
+    "reentry_min": 10,                # warn on a new trade this soon after a loss
+    "trade_count_warn": 4,            # warn from this many new trades in a day
+    "otm_warn_pct": 0.0035,           # warn when a same-day strike is this far out of the money (0.35% ~ $2.60 on QQQ)
 }
+
+
+def trade_warnings(broker, occ, now, day, g):
+    """Heads-ups for a new position, based on the patterns in JOURNAL.md (9/25). Never blocks."""
+    out = []
+    t = now.time()
+    lo, hi = (hm(x) for x in g["midday_ct"])
+    if lo <= t < hi:
+        out.append(f"MIDDAY TRADE ({g['midday_ct'][0]}-{g['midday_ct'][1]} CT): most midday trades in the journal "
+                   f"lost to chop")
+    if day.get("last_loss_at") and (now - day["last_loss_at"]).total_seconds() < g["reentry_min"] * 60:
+        mins = (now - day["last_loss_at"]).total_seconds() / 60
+        out.append(f"RE-ENTRY {'<1' if mins < 1 else f'{mins:.0f}'} min after a loss: quick re-buys after a loss lost on 9/25; "
+                   f"is this a new setup?")
+    if day["opened"] >= g["trade_count_warn"]:
+        out.append(f"TRADE #{day['opened']} TODAY: on 9/25 the P/L peaked after the first trades and chop gave it back")
+    try:
+        und, exp, cp, strike = parse_occ(occ)
+        spot = broker.stock_quote(und)["price"]
+        if spot:
+            away = (strike - spot) / spot if cp == "C" else (spot - strike) / spot
+            limit = g["otm_warn_pct"] if exp == now.date() else g["otm_warn_pct"] * 3
+            if away > limit:
+                out.append(f"FAR FROM THE MONEY: {und} {strike:g}{cp} is ${abs(strike - spot):.2f} ({away:.2%}) away "
+                           f"from {spot:.2f}; it needs a big move fast before time decay wins")
+    except Exception:
+        pass
+    return out
 
 
 def guard_stop(t, g):
@@ -649,7 +683,7 @@ def guard(broker, risk, cfg):
     flatten = hm(cfg["risk"]["flatten_time_ct"])
     kill = os.path.join(HERE, "KILL")
     done_states = ("CANCELLED", "CANCELED", "REJECTED", "FAILED", "EXPIRED")
-    tracked, day = {}, {"realized": 0.0, "losses": 0, "closed": 0}
+    tracked, day = {}, {"realized": 0.0, "losses": 0, "closed": 0, "opened": 0}
     warned, first_pass, last_beat = False, True, 0.0
     first = (f"first stop {g['risk_pct']:.0%} under entry, risk ${g['risk_min']}-${g['risk_max']} per trade"
              if g.get("risk_pct") else f"stop -{g['stop_pct']:.0%}")
@@ -707,6 +741,8 @@ def guard(broker, risk, cfg):
             risk.record(pnl)
             day["realized"] += pnl
             day["losses"] += pnl < 0
+            if pnl < 0:
+                day["last_loss_at"] = now_ct()
         day["closed"] += 1
         if g.get("warn_loss") and -day["realized"] >= g["warn_loss"] and not day.get("warned_loss"):
             day["warned_loss"] = True
@@ -782,6 +818,11 @@ def guard(broker, risk, cfg):
                 t["stop"] = guard_stop(t, g)
                 log(f"{'FOUND' if first_pass else 'NEW'} POSITION {occ} x{p['qty']} @ {entry:.2f} — max loss at "
                     f"the stop ${(entry - t['stop']) * 100 * p['qty']:.2f} ({1 - t['stop'] / entry:.0%})")
+                if not first_pass:
+                    day["opened"] += 1
+                    if g["warnings"]:
+                        for w in trade_warnings(broker, occ, now, day, g):
+                            log(f"!! {w}")
                 if t["stop"] > entry * 0.8:
                     log(f"!! stop is only {1 - t['stop'] / entry:.0%} under the entry — normal wiggles may hit it; "
                         f"a cheaper contract or fewer contracts gives it more room")
@@ -877,6 +918,82 @@ def guard(broker, risk, cfg):
         f"Stop orders are DAY orders: run guard again tomorrow for anything held overnight.")
 
 
+def testorder(broker):
+    """Prove Webull accepts the bot's orders without risking money: a $0.01 buy on an at-the-money SPY call
+    (cannot fill) is placed and cancelled; if you hold an option, a $0.01 stop-limit sell is placed and cancelled."""
+    if not broker.live:
+        log('PAPER mode: run  python bot.py --live testorder  (nothing can fill: every test order is at $0.01)')
+        return
+    done_states = ("CANCELLED", "CANCELED", "REJECTED", "FAILED", "EXPIRED")
+
+    def detail(oid):
+        try:
+            raw = json.dumps(broker._ok(broker.trade.order_v2.get_order_detail(broker.account, oid), "order detail"))
+            return raw.replace(str(broker.account), "***")[:700]
+        except Exception as e:
+            return f"(detail failed: {short_err(e)})"
+
+    def place_cancel(label, occ, side, qty, limit, stop=None):
+        log(f"{label}: placing {side} {qty} {occ} " + (f"STOP {stop:.2f} / " if stop else "") + f"LIMIT {limit:.2f}")
+        try:
+            oid = broker.place_option(occ, side, qty, limit, stop=stop)
+        except Exception as e:
+            log(f"{label} FAILED — Webull rejected the order: {short_err(e)}")
+            return False
+        time.sleep(2)
+        st, _, _ = broker.order_status(oid)
+        log(f"{label}: accepted, status {st or '?'}")
+        log(f"{label}: order detail {detail(oid)}")
+        try:
+            broker.cancel(oid)
+        except Exception as e:
+            log(f"{label}: cancel error {short_err(e)}")
+        for _ in range(5):
+            time.sleep(1)
+            st, _, _ = broker.order_status(oid)
+            if st in done_states:
+                log(f"{label} PASSED — placed and cancelled (status {st})")
+                return True
+            if "FILLED" in st:
+                log(f"!! {label}: the test order FILLED — check Webull and close it")
+                return False
+        log(f"!! {label}: cancel not confirmed (status {st}) — CANCEL THE $0.01 ORDER IN WEBULL BY HAND")
+        return False
+
+    now = now_ct()
+    exp = now.date()
+    while exp.weekday() >= 5:
+        exp += timedelta(days=1)
+    spot = broker.stock_quote("SPY")["price"]
+    if not spot:
+        log("no SPY price — try again during market hours")
+        return
+    occ = occ_symbol("SPY", exp, "C", round(spot))
+    q = broker.option_quotes([occ]).get(occ)
+    if q and 0 < q["ask"] < 0.10:
+        log(f"{occ} ask is only {q['ask']:.2f}; a $0.01 order is not safely unfillable — skipping")
+        return
+    ok1 = place_cancel("TEST 1 (limit order)", occ, "BUY", 1, 0.01)
+
+    ok2 = None
+    held = broker.option_positions()
+    if not held:
+        log("TEST 2 (stop-limit order) skipped: no option position. It gets checked on your first trade — "
+            "look for 'PROTECTED' in the guard window and a Stop Limit order in Webull.")
+    else:
+        pocc, p = next(iter(held.items()))
+        pq = broker.option_quotes([pocc]).get(pocc)
+        if not pq or pq["bid"] <= 0.05:
+            log(f"TEST 2 skipped: {pocc} has no bid above $0.05")
+        else:
+            ok2 = place_cancel("TEST 2 (stop-limit order)", pocc, "SELL", p["qty"], 0.01, stop=0.01)
+            if not ok2:
+                log("   (if the guard is running it already holds a sell order on this position — "
+                    "that also blocks this test)")
+    log("RESULT: " + ("orders work" if ok1 else "limit orders FAILED — send me this window") +
+        ("" if ok2 is None else ("; stop-limit orders work" if ok2 else "; stop-limit FAILED — send me this window")))
+
+
 def rsi2_scan(broker):
     from webull.data.common.category import Category
     from webull.data.common.timespan import Timespan
@@ -917,6 +1034,7 @@ def main():
     p.add_argument("--put-below", type=float, required=True); p.add_argument("--auto", action="store_true")
     p.add_argument("--max-price", type=float, default=0.50); p.add_argument("--vol-mult", type=float, default=1.5)
     sub.add_parser("rsi2")
+    sub.add_parser("testorder", help="prove Webull accepts the bot's orders with $0.01 orders that cannot fill")
     sub.add_parser("guard", help="protect every option position you open: stop, trailing stop, same-day flatten")
     sub.add_parser("auto", help="hands-off day: opening-range levels, confirmed breakouts, automatic exits")
     a = ap.parse_args()
@@ -984,6 +1102,8 @@ def main():
         auto(broker, risk, cfg)
     elif a.cmd == "guard":
         guard(broker, risk, cfg)
+    elif a.cmd == "testorder":
+        testorder(broker)
 
 
 if __name__ == "__main__":
