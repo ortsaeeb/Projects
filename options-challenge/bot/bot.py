@@ -633,7 +633,7 @@ GUARD_DEFAULTS = {
     "lockout_losses": 2,
     "lockout_loss": 25,
     "warn_loss": 20,                  # just a heads-up in the log when the day's realized loss reaches this
-    "manual_grace_s": 45,             # after you cancel the guard's stop in the app, wait this long before re-placing
+    "manual_grace_s": 60,             # after you cancel the guard's stop in the app, wait this long before re-placing
     "startup_test": True,             # live: place+cancel a $0.01 test order when the market is open
     "warnings": True,                 # trade warnings from the journal's patterns (never block anything)
     "midday_ct": ["10:30", "13:30"],  # warn on new trades in this window

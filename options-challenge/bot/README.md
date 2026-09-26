@@ -60,8 +60,8 @@ python bot.py guard             # dry run: reads your real positions, only simul
   **25% under the highest bid**.
 - **Selling by hand:** Webull won't let you sell while the Guardian's stop holds the contracts. Either
   **edit the Guardian's stop** in Orders into a Limit order at the bid, or **cancel it and sell** — the Guardian
-  waits 45 seconds before putting a stop back, and cleans up once the position is gone.
-- If the stop is cancelled and you still hold the option after 45 seconds, the stop goes back on.
+  waits 1 minute before putting a stop back, and cleans up once the position is gone.
+- If the stop is cancelled and you still hold the option after 1 minute, the stop goes back on.
 - Only one Guardian window can run at a time (a second one refuses to start).
 - A `KILL` file left over from a previous day is deleted at startup; today's `KILL` file sells everything.
 - Early-close days (day after Thanksgiving, Christmas Eve): same-day options are closed at 11:50 CT.
