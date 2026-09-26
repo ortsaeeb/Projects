@@ -14,7 +14,7 @@ Commands (run `python bot.py -h` for all flags):
                                ratchets up (breakeven at +40%, locks +30% at +80%, +90% at +150%, then trails 25%),
                                same-day options are closed at flatten time
   auto                         hands-off day: 15-min opening-range levels on SPY+QQQ, confirmed breakouts,
-                               automatic exits (what run_bot.bat / the Windows scheduled task runs)
+                               automatic exits (backtest: loses money — paper mode only)
   rsi2                         daily RSI(2) pullback scan on SPY/QQQ/IWM (the strategy that backtested well)
 
 Safety: max cost per trade, max trades per day, max daily loss, no new entries after 14:30 CT,
@@ -29,7 +29,7 @@ import sys
 import time
 import logging
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -74,6 +74,16 @@ def short_err(e):
 
 def r2(x):
     return round(x + 1e-9, 2)
+
+
+PENNY = {"SPY", "QQQ", "IWM"}  # $0.01 ticks at every price; most other options use $0.05 at $3 and up
+
+
+def tick_down(occ, px):
+    """Round a price down to a valid option tick."""
+    if px >= 3 and parse_occ(occ)[0] not in PENNY:
+        return math.floor(px * 20 + 1e-9) / 20
+    return math.floor(px * 100 + 1e-9) / 100
 
 
 def find(obj, *keys):
@@ -239,10 +249,10 @@ class Broker:
             cp = str(find(leg, "option_type") or "").upper()[:1]
             strike = find(leg, "option_exercise_price", "strike_price")
             qty = int(float(find(row, "quantity", "qty") or 0))
-            if not (und and exp and cp in ("C", "P") and strike and qty):
-                continue
+            if not (und and exp and cp in ("C", "P") and strike and qty > 0):
+                continue  # short or empty: the guard only protects long options
             occ = occ_symbol(und, datetime.strptime(str(exp)[:10], "%Y-%m-%d").date(), cp, float(strike))
-            out[occ] = {"qty": abs(qty), "cost": float(find(row, "cost_price", "avg_price") or find(leg, "cost") or 0)}
+            out[occ] = {"qty": qty, "cost": float(find(row, "cost_price", "avg_price") or find(leg, "cost") or 0)}
         return out
 
     def place_option(self, occ, side, qty, limit, stop=None):
@@ -271,7 +281,8 @@ class Broker:
         j = self._ok(self.trade.order_v2.get_order_detail(self.account, coid), "order detail")
         status = str(find(j, "status", "order_status") or "").upper()
         filled = float(find(j, "filled_quantity", "filled_qty") or 0)
-        px = float(find(j, "filled_price", "avg_filled_price", "average_price") or 0)
+        px = float(find(j, "filled_price", "avg_filled_price", "filled_avg_price", "avg_fill_price",
+                        "average_price", "avg_price") or 0)
         return status, filled, px
 
 
@@ -324,7 +335,7 @@ def sell_now(broker, occ, qty, poll):
     """Aggressive exit: sell at bid, re-price down up to 4 times."""
     for step in (0.00, 0.02, 0.05, 0.10, 0.20):
         q = broker.option_quotes([occ]).get(occ, {"bid": 0})
-        px = max(0.01, r2(q["bid"] - step))
+        px = max(0.01, tick_down(occ, q["bid"] - step))
         coid = broker.place_option(occ, "SELL", qty, px)
         got = wait_fill(broker, coid, 15, poll)
         if got is not None:
@@ -361,7 +372,9 @@ def manage(broker, risk, occ, qty, entry, cfg):
 def manage_step(broker, risk, occ, qty, entry, cfg, st, trail_at, flatten):
     """One pass of the exit logic. Returns True when the position is closed (or handed to the user)."""
     status, filled, px = broker.order_status(st["tp_id"])
+    tp = r2(entry * (1 + cfg["risk"]["take_profit_pct"]))
     if "FILLED" in status and "PARTIAL" not in status:
+        px = px if px > 0 else tp
         pnl = (px - entry) * 100 * qty
         log(f"TAKE-PROFIT FILLED @ {px:.2f}  P/L ${pnl:+.2f}")
         risk.record(pnl)
@@ -388,12 +401,14 @@ def manage_step(broker, risk, occ, qty, entry, cfg, st, trail_at, flatten):
         log(f"cancel take-profit: {short_err(e)}")
     status, filled, px = broker.order_status(st["tp_id"])
     if "FILLED" in status and "PARTIAL" not in status:  # filled while we were cancelling
+        px = px if px > 0 else tp
         pnl = (px - entry) * 100 * qty
         log(f"TAKE-PROFIT FILLED @ {px:.2f}  P/L ${pnl:+.2f}")
         risk.record(pnl)
         return True
     px = sell_now(broker, occ, qty, cfg["poll_seconds"])
     if px is not None:
+        px = px if px > 0 else q["bid"]
         pnl = (px - entry) * 100 * qty
         log(f"EXITED @ {px:.2f}  P/L ${pnl:+.2f}")
         risk.record(pnl)
@@ -628,43 +643,65 @@ def guard_stop(t, g):
 
 
 def guard(broker, risk, cfg):
-    """Protect every option position in the account: stop order right away, ratchet it up, flatten same-day
-    options at flatten time. Entries stay manual."""
+    """Protect every long option position in the account: stop order right away, ratchet it up, flatten
+    same-day options at flatten time. Entries stay manual."""
     g = {**GUARD_DEFAULTS, **cfg.get("guard", {})}
     flatten = hm(cfg["risk"]["flatten_time_ct"])
     kill = os.path.join(HERE, "KILL")
+    done_states = ("CANCELLED", "CANCELED", "REJECTED", "FAILED", "EXPIRED")
     tracked, day = {}, {"realized": 0.0, "losses": 0, "closed": 0}
-    warned = False
+    warned, first_pass, last_beat = False, True, 0.0
     first = (f"first stop {g['risk_pct']:.0%} under entry, risk ${g['risk_min']}-${g['risk_max']} per trade"
              if g.get("risk_pct") else f"stop -{g['stop_pct']:.0%}")
     log(f"GUARD on: {first}, ladder {g['ladder']}, trail {g['trail_pct']:.0%} after "
         f"+{g['trail_after']:.0%}, same-day options closed at {cfg['risk']['flatten_time_ct']} CT, "
         f"lockout {'ON' if g['lockout'] else 'off'}")
 
+    def filled(st):
+        return "FILLED" in st and "PARTIAL" not in st
+
+    def fill_px(px, t):
+        return px if px and px > 0 else (t.get("last_bid") or t["stop"])  # some responses omit the fill price
+
     def place_stop(occ, t):
-        stop = t["stop"]
-        limit = r2(max(0.01, stop - max(0.03, g["limit_offset_pct"] * stop)))
+        stop = tick_down(occ, t["stop"])
+        limit = tick_down(occ, max(0.01, stop - max(0.03, g["limit_offset_pct"] * stop)))
         try:
             t["oid"] = broker.place_option(occ, "SELL", t["qty"], limit, stop=stop)
-            t["soft"], t["cancelling"] = False, False
+            t.update(soft=False, cancelling=False, placed=True, fails=0)
             log(f"PROTECTED {occ} x{t['qty']}: stop {stop:.2f} (limit {limit:.2f})")
         except Exception as e:
             t["oid"], t["soft"] = None, True
-            log(f"!! stop order rejected ({short_err(e)}) — GUARD will watch {stop:.2f} itself and sell at the bid")
+            t["fails"] = t.get("fails", 0) + 1
+            t["retry_at"] = now_ct().timestamp() + 15
+            if t["fails"] == 1:
+                log(f"!! stop order rejected ({short_err(e)}) — GUARD watches {stop:.2f} itself and keeps "
+                    f"retrying the order every 15s")
 
     def cancel_stop(t):
-        if not t.get("oid"):
+        """Cancel our resting stop. Returns the fill price if it filled before the cancel went through."""
+        oid = t.get("oid")
+        if not oid:
             return None
-        t["cancelling"] = True
+        t["cancelling"], t["oid"] = True, None
         try:
-            broker.cancel(t["oid"])
+            broker.cancel(oid)
         except Exception as e:
             log(f"cancel stop: {short_err(e)}")
-        st, _, px = broker.order_status(t["oid"])
-        t["oid"] = None
-        return px if "FILLED" in st and "PARTIAL" not in st else None
+        for _ in range(4):  # wait for Webull to confirm, so a new stop isn't rejected for "position in use"
+            try:
+                st, _, px = broker.order_status(oid)
+            except Exception:
+                st, px = "", 0
+            if filled(st):
+                return fill_px(px, t)
+            if st in done_states:
+                return None
+            time.sleep(1)
+        log("!! old stop not confirmed cancelled yet")
+        return None
 
-    def close(occ, t, px, why):
+    def close(occ, t, px, why, est=False):
         pnl = (px - t["entry"]) * 100 * t["qty"] if px is not None else None
         if pnl is not None:
             risk.record(pnl)
@@ -676,14 +713,29 @@ def guard(broker, risk, cfg):
             log(f"!! heads-up: down ${-day['realized']:.2f} today (warning level ${g['warn_loss']}) — "
                 f"trading continues, no lockout")
         peak_pnl = (t["peak"] - t["entry"]) * 100 * t["qty"]
-        log(f"CLOSED {occ} x{t['qty']} ({why}) entry {t['entry']:.2f} exit {px if px is None else f'{px:.2f}'} "
-            f"P/L {'?' if pnl is None else f'${pnl:+.2f}'} (best was ${peak_pnl:+.2f})")
+        tilde = "~" if est else ""
+        log(f"CLOSED {occ} x{t['qty']} ({why}) entry {t['entry']:.2f} exit "
+            f"{'?' if px is None else f'{tilde}{px:.2f}'} P/L {'?' if pnl is None else f'{tilde}${pnl:+.2f}'} "
+            f"(best was ${peak_pnl:+.2f})")
         t["closed"] = True
 
     def exit_now(occ, t, why):
         px = cancel_stop(t)
         if px is None:
-            px = sell_now(broker, occ, t["qty"], cfg["poll_seconds"])
+            try:
+                px = sell_now(broker, occ, t["qty"], cfg["poll_seconds"])
+            except Exception as e:
+                log(f"sell failed: {short_err(e)}")
+                px = None
+            px = None if px is None else fill_px(px, t)
+        if px is None:
+            t["exit"] = why  # keep the position tracked and try again next pass
+            t["exit_fails"] = t.get("exit_fails", 0) + 1
+            if t["exit_fails"] % 6 == 1:
+                log(f"!! {occ}: exit ({why}) not filled — retrying every few seconds; "
+                    f"SELL MANUALLY IN WEBULL if this keeps showing")
+            place_stop(occ, t)  # stay protected while retrying
+            return
         close(occ, t, px, why)
 
     while True:
@@ -692,46 +744,51 @@ def guard(broker, risk, cfg):
             break
         try:
             pos = broker.option_positions()
-            # positions gone: sold by hand in the app, or our stop filled
+            # positions gone: our stop filled, or sold by hand in the app
             for occ, t in list(tracked.items()):
-                if occ not in pos:
-                    if not t.get("closed"):
-                        px = None
-                        if t.get("oid"):
-                            st, _, fpx = broker.order_status(t["oid"])
-                            if "FILLED" in st and "PARTIAL" not in st:
-                                px = fpx
-                            else:
-                                cancel_stop(t)  # never leave a sell order behind for a position that's gone
-                        close(occ, t, px if px is not None else t.get("last_bid"),
-                              "stop filled" if px is not None else "sold in the app")
+                if occ in pos:
+                    t["missing"] = 0
+                    continue
+                if t.get("closed"):
                     del tracked[occ]
-            # new positions (or more contracts added)
+                    continue
+                if t.get("oid"):
+                    st, _, fpx = broker.order_status(t["oid"])
+                    if filled(st):
+                        close(occ, t, fill_px(fpx, t), "stop filled")
+                        del tracked[occ]
+                        continue
+                # one empty positions reply can be a glitch: wait for a second one before letting go
+                t["missing"] = t.get("missing", 0) + 1
+                if t["missing"] >= 2:
+                    cancel_stop(t)  # never leave a sell order behind for a position that's gone
+                    close(occ, t, t.get("last_bid"), "sold in the app", est=True)
+                    del tracked[occ]
+            # new positions, or contracts added / partly sold
             for occ, p in pos.items():
                 t = tracked.get(occ)
-                if t and not t.get("closed") and t["qty"] != p["qty"]:
-                    log(f"{occ}: quantity changed {t['qty']} -> {p['qty']}, re-placing the stop")
-                    cancel_stop(t)
-                    t.update(qty=p["qty"], entry=p["cost"] or t["entry"])
-                    place_stop(occ, t)
                 if t:
+                    if not t.get("closed") and t["qty"] != p["qty"]:
+                        log(f"{occ}: quantity changed {t['qty']} -> {p['qty']}, resetting the stop")
+                        cancel_stop(t)
+                        t.update(qty=p["qty"], entry=p["cost"] or t["entry"], stop=0.0)
+                        t["stop"] = guard_stop(t, g)
+                    continue
+                if p["cost"] <= 0:
                     continue
                 entry = p["cost"]
-                if entry <= 0:
-                    continue
                 t = tracked[occ] = {"qty": p["qty"], "entry": entry, "peak": entry, "stop": 0.0, "oid": None,
-                                    "soft": False, "below": 0}
+                                    "soft": False, "below": 0, "startup": first_pass}
                 t["stop"] = guard_stop(t, g)
-                log(f"NEW POSITION {occ} x{p['qty']} @ {entry:.2f} — max loss at the stop "
-                    f"${(entry - t['stop']) * 100 * p['qty']:.2f} ({1 - t['stop'] / entry:.0%})")
+                log(f"{'FOUND' if first_pass else 'NEW'} POSITION {occ} x{p['qty']} @ {entry:.2f} — max loss at "
+                    f"the stop ${(entry - t['stop']) * 100 * p['qty']:.2f} ({1 - t['stop'] / entry:.0%})")
                 if t["stop"] > entry * 0.8:
                     log(f"!! stop is only {1 - t['stop'] / entry:.0%} under the entry — normal wiggles may hit it; "
                         f"a cheaper contract or fewer contracts gives it more room")
-                locked = g["lockout"] and (day["losses"] >= g["lockout_losses"] or -day["realized"] >= g["lockout_loss"])
-                if locked:
+                if not first_pass and g["lockout"] and (day["losses"] >= g["lockout_losses"]
+                                                        or -day["realized"] >= g["lockout_loss"]):
                     log("LOCKOUT: daily limit reached — selling the new position")
-                    exit_now(occ, t, "lockout")
-                    continue
+                    t["exit"] = "lockout"
                 try:
                     acct = float(find(broker.balance(), "net_liquidation_value", "total_net_liquidation_value") or 0)
                     if acct and entry * 100 * p["qty"] > g["size_alert_pct"] * acct:
@@ -739,26 +796,42 @@ def guard(broker, risk, cfg):
                             f"{entry * 100 * p['qty'] / acct:.0%} of the account (limit {g['size_alert_pct']:.0%})")
                 except Exception:
                     pass
-                place_stop(occ, t)
+            first_pass = False
 
             live = [o for o, t in tracked.items() if not t.get("closed")]
-            quotes = broker.option_quotes(live) if live else {}
+            try:
+                quotes = broker.option_quotes(live) if live else {}
+            except Exception as e:
+                quotes = {}
+                log(f"guard: quotes failed ({short_err(e)}) — stop orders stay in place")
             for occ in live:
                 t = tracked[occ]
                 q = quotes.get(occ)
-                if not q or q["bid"] <= 0:
+                bid = q["bid"] if q and q.get("bid", 0) > 0 else None
+                if bid is not None:
+                    t["last_bid"] = bid
+                if t.get("exit"):
+                    exit_now(occ, t, t["exit"])
                     continue
-                bid = t["last_bid"] = q["bid"]
-                # our stop order: filled? cancelled by someone else?
+                # our stop order: filled? cancelled or rejected?
                 if t.get("oid"):
                     st, _, fpx = broker.order_status(t["oid"])
-                    if "FILLED" in st and "PARTIAL" not in st:
-                        close(occ, t, fpx, "stop filled")
+                    if filled(st):
+                        close(occ, t, fill_px(fpx, t), "stop filled")
                         continue
-                    if st in ("CANCELLED", "CANCELED", "REJECTED", "FAILED", "EXPIRED") and not t.get("cancelling"):
-                        log(f"!! the stop on {occ} was {st.lower()}")
+                    if st in done_states:
+                        if not t.get("cancelling"):
+                            log(f"!! the stop on {occ} was {st.lower()}")
                         t["oid"] = None
-                if not t.get("oid") and not t["soft"] and g["reprotect"]:
+                # a position that was already under its stop when GUARD started: don't dump it on sight
+                if bid is not None and t.get("startup") and not t.get("seen") and bid <= t["stop"]:
+                    old, t["stop"] = t["stop"], r2(max(0.01, bid * 0.85))
+                    log(f"!! {occ} was already under its stop when GUARD started (bid {bid:.2f} <= {old:.2f}); "
+                        f"stop set 15% under the bid at {t['stop']:.2f}")
+                if bid is not None:
+                    t["seen"] = True
+                if not t.get("oid") and (g["reprotect"] or not t.get("placed")) \
+                        and now_ct().timestamp() >= t.get("retry_at", 0):
                     place_stop(occ, t)
                 # same-day options: out before the close
                 if parse_occ(occ)[1] == now.date() and now.time() >= flatten:
@@ -767,32 +840,41 @@ def guard(broker, risk, cfg):
                 if os.path.exists(kill):
                     exit_now(occ, t, "KILL file")
                     continue
-                # ratchet the stop up
+                if bid is None:
+                    continue
+                # ratchet the stop up (never down)
                 if bid > t["peak"]:
                     t["peak"] = bid
                 new = min(guard_stop(t, g), r2(bid - 0.02))
                 if new >= t["stop"] + max(0.02, 0.03 * t["stop"]):
                     old = t["stop"]
-                    filled = cancel_stop(t)
-                    if filled is not None:
-                        close(occ, t, filled, "stop filled")
+                    got = cancel_stop(t)
+                    if got is not None:
+                        close(occ, t, got, "stop filled")
                         continue
                     t["stop"] = new
                     log(f"TRAIL {occ}: bid {bid:.2f}, best {t['peak']:.2f} -> stop {old:.2f} -> {new:.2f} "
                         f"(locks ${(new - t['entry']) * 100 * t['qty']:+.2f})")
                     place_stop(occ, t)
-                # safety net: bid under the stop but no fill (soft mode or a stuck stop-limit)
+                # safety net: bid under the stop but no fill (no resting order, or a stuck stop-limit)
                 t["below"] = t["below"] + 1 if bid <= t["stop"] else 0
                 if (t["soft"] and bid <= t["stop"]) or t["below"] >= 3:
                     exit_now(occ, t, f"bid {bid:.2f} under stop {t['stop']:.2f}")
+            live = [o for o, t in tracked.items() if not t.get("closed")]
             if not warned and now.time() >= hm(g["warn_time_ct"]) and any(
                     parse_occ(o)[1] == now.date() for o in live):
                 warned = True
                 log(f"!! same-day options will be closed at {cfg['risk']['flatten_time_ct']} CT")
+            if now.timestamp() - last_beat >= 300:
+                last_beat = now.timestamp()
+                what = ", ".join(f"{o} stop {tracked[o]['stop']:.2f}{'' if tracked[o].get('oid') else ' (watching)'}"
+                                 for o in live) or "no open option positions"
+                log(f"GUARD alive — {what}")
         except Exception as e:
             log(f"guard: error ({short_err(e)}) — retrying")
         time.sleep(cfg["poll_seconds"])
-    log(f"GUARD summary: {day['closed']} closed, realized ${day['realized']:+.2f}, losses {day['losses']}")
+    log(f"GUARD summary: {day['closed']} closed, realized ${day['realized']:+.2f}, losses {day['losses']}. "
+        f"Stop orders are DAY orders: run guard again tomorrow for anything held overnight.")
 
 
 def rsi2_scan(broker):
@@ -875,6 +957,10 @@ def main():
             print(occ, broker.option_quotes([occ]))
         except Exception as e:
             print("Option quote failed:", short_err(e))
+        try:  # the 'guard' command depends on reading positions correctly
+            print("Option positions (as the guard reads them):", broker.option_positions() or "none")
+        except Exception as e:
+            print("Positions failed:", short_err(e))
         try:  # the 'auto' command depends on these 5-min candles and their timestamps
             bars = broker.bars_5m("SPY", 150)
             b = bars[-1]

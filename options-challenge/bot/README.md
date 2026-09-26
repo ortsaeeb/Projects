@@ -30,7 +30,7 @@ Both are required, on purpose:
 - `"mode": "live"` in `config.json`
 - `--live` on the command line
 ```
-python bot.py --live auto        # start by 8:30 CT: sets its own levels from the 8:30-8:45 range on SPY+QQQ,
+python bot.py --live auto        # (backtest: loses money, see RESEARCH.md part 4) start by 8:30 CT: sets its own levels from the 8:30-8:45 range on SPY+QQQ,
                                  # trades confirmed breakouts (volume, VWAP, strong close, other ETF agrees) until 2:30 CT
 python bot.py --live watch QQQ --call-above 742.7 --put-below 740.2 --auto
 python bot.py --live manage SPY260924C00769000 --entry 0.58     # protect a position you bought yourself
@@ -58,6 +58,12 @@ Change any of these by adding a `"guard"` block to `config.json`, for example:
 ```json
 "guard": { "risk_pct": 0.30, "risk_min": 10, "risk_max": 20, "warn_loss": 20 }
 ```
+- Run **only one** of `guard`, `auto`, `buy`, `watch --auto` or `manage` at a time: they each place their own
+  exit orders and would fight over the same contracts.
+- Stops are **DAY orders**. For an option you hold overnight, start `guard` again the next morning.
+- `python bot.py check` prints your option positions the way the guard reads them; check it once.
+- Every 5 minutes the log shows `GUARD alive — ...` with each position's stop, so you can see it's running.
+
 Moving the stop up needs the bot running; the resting stop order protects you either way.
 If Webull rejects the stop order type, the log says so and the Guardian watches the stop itself instead
 (that fallback only works while the bot runs).
