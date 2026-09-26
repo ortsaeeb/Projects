@@ -126,3 +126,23 @@ version that is positive in both periods.
 - Added 2026-09-25: filters using yesterday's levels / the gap also lose in both periods (IV 1.15, per trade):
   breakout must also clear prior-day high/low −$10.33 / −$5.80; only in gap direction −$9.28 / −$6.02;
   only against the gap (gap fade) −$6.59 / −$6.30.
+
+## Part 5 — Prior-day volume profile (VAH / POC / VAL) setups (2026-09-26)
+
+Script: `research/study10_volume_profile.py`. Prior-day profile from 5-min bars (checked against a 1-minute
+profile: POC/VAH/VAL within $0.07). SPY, QQQ, IWM, 723 symbol-days, same option model and train/test split.
+
+| Setup (IV 1.15×, $0.50 same-day option, level stops) | Train | Test |
+|---|---|---|
+| All four combined | 346 trades, 19% win, −$10.71/trade | 269, 18%, −$11.71 |
+| A: open above VAH, VAH hold → call | 68, 29%, −$4.03 | 95, 27%, −$7.96 |
+| B: open below VAL, VAL reject → put | 73, 23%, −$6.58 | 41, 24%, −$7.33 |
+| C: back into value 30 min (80% rule) | 70, 47%, −$1.85 | 44, 36%, −$9.31 |
+| D: open inside, break out of value | 158, 3%, −$18.40 | 108, 3%, −$17.46 |
+
+- Best variants (60-min time stop, +50% option take-profit) cut the loss to −$1 to −$3/trade in train but
+  −$3.50 to −$7 in test. Nearer-the-money contracts ($1.50, $3.00) lose more dollars. IV 1.0× does not rescue it.
+- The underlying move after the signals is +3 bps (train) and −2 bps (test): no directional edge at all.
+
+**Conclusion: prior-day volume profile levels do not give a same-day option edge in this data.** Together with
+Parts 1 and 4, no rule-based same-day option-buying strategy has held up in both periods.
