@@ -42,7 +42,8 @@ You pick the trades in the Webull app; the Guardian manages every exit.
 python bot.py --live guard      # real stop orders
 python bot.py guard             # dry run: reads your real positions, only simulates the orders
 ```
-- Any option you buy gets a real **stop-limit sell order in Webull within ~5 seconds** (entry −35%).
+- Any option you buy gets a real **stop-limit sell order in Webull within ~5 seconds**, placed so the trade
+  loses at most **$20** (`risk_dollars`; set it to 0 to use `stop_pct` −35% instead).
   It stays at Webull even if your PC shuts off.
 - The stop only moves up: **breakeven at +40%**, **locks +30% at +80%**, **locks +90% at +150%**, then trails
   **25% under the highest bid**.
@@ -53,7 +54,7 @@ python bot.py guard             # dry run: reads your real positions, only simul
 
 Change any of these by adding a `"guard"` block to `config.json`, for example:
 ```json
-"guard": { "stop_pct": 0.35, "trail_pct": 0.25, "lockout": true, "lockout_loss": 25 }
+"guard": { "risk_dollars": 20, "trail_pct": 0.25, "lockout": true, "lockout_loss": 25 }
 ```
 Moving the stop up needs the bot running; the resting stop order protects you either way.
 If Webull rejects the stop order type, the log says so and the Guardian watches the stop itself instead

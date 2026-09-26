@@ -591,7 +591,8 @@ def auto(broker, risk, cfg):
 
 
 GUARD_DEFAULTS = {
-    "stop_pct": 0.35,                 # first stop: entry -35%
+    "risk_dollars": 20,               # first stop: lose at most this much per trade (all contracts together)...
+    "stop_pct": 0.35,                 # ...or, with risk_dollars set to 0, entry -35%
     "ladder": [[0.40, 0.00], [0.80, 0.30], [1.50, 0.90]],  # [peak gain reached, gain locked by the stop]
     "trail_after": 1.50,              # above +150%, also trail...
     "trail_pct": 0.25,                # ...25% below the highest bid
@@ -609,7 +610,10 @@ GUARD_DEFAULTS = {
 def guard_stop(t, g):
     """Stop price for a tracked position from its entry and highest bid (never lower than before)."""
     gain = t["peak"] / t["entry"] - 1
-    stop = t["entry"] * (1 - g["stop_pct"])
+    if g.get("risk_dollars"):
+        stop = max(0.05, t["entry"] - g["risk_dollars"] / (100 * t["qty"]))
+    else:
+        stop = t["entry"] * (1 - g["stop_pct"])
     for reached, lock in g["ladder"]:
         if gain >= reached:
             stop = max(stop, t["entry"] * (1 + lock))
@@ -626,7 +630,8 @@ def guard(broker, risk, cfg):
     kill = os.path.join(HERE, "KILL")
     tracked, day = {}, {"realized": 0.0, "losses": 0, "closed": 0}
     warned = False
-    log(f"GUARD on: stop -{g['stop_pct']:.0%}, ladder {g['ladder']}, trail {g['trail_pct']:.0%} after "
+    first = f"${g['risk_dollars']} risk per trade" if g.get("risk_dollars") else f"stop -{g['stop_pct']:.0%}"
+    log(f"GUARD on: {first}, ladder {g['ladder']}, trail {g['trail_pct']:.0%} after "
         f"+{g['trail_after']:.0%}, same-day options closed at {cfg['risk']['flatten_time_ct']} CT, "
         f"lockout {'ON' if g['lockout'] else 'off'}")
 
@@ -707,7 +712,11 @@ def guard(broker, risk, cfg):
                 t = tracked[occ] = {"qty": p["qty"], "entry": entry, "peak": entry, "stop": 0.0, "oid": None,
                                     "soft": False, "below": 0}
                 t["stop"] = guard_stop(t, g)
-                log(f"NEW POSITION {occ} x{p['qty']} @ {entry:.2f}")
+                log(f"NEW POSITION {occ} x{p['qty']} @ {entry:.2f} — max loss at the stop "
+                    f"${(entry - t['stop']) * 100 * p['qty']:.2f} ({1 - t['stop'] / entry:.0%})")
+                if t["stop"] > entry * 0.8:
+                    log(f"!! stop is only {1 - t['stop'] / entry:.0%} under the entry — normal wiggles may hit it; "
+                        f"a cheaper contract or fewer contracts gives it more room")
                 locked = g["lockout"] and (day["losses"] >= g["lockout_losses"] or -day["realized"] >= g["lockout_loss"])
                 if locked:
                     log("LOCKOUT: daily limit reached — selling the new position")
