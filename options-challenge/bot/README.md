@@ -36,7 +36,9 @@ python bot.py --live watch QQQ --call-above 742.7 --put-below 740.2 --auto
 python bot.py --live manage SPY260924C00769000 --entry 0.58     # protect a position you bought yourself
 ```
 
-## 3a. Order test (run once before relying on the bot)
+## 3a. Order test
+`guard` does this by itself: once the market is open it places and cancels a $0.01 test order and prints
+`ORDER TEST PASSED`, and after your first trade it prints `STOP ORDER CONFIRMED`. To run it on its own:
 ```
 python bot.py --live testorder
 ```

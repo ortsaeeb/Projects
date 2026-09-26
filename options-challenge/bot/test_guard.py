@@ -156,6 +156,21 @@ bot.testorder(T(reject=True))
 bot.log = orig
 check("15 testorder reports a rejection clearly", any("FAILED" in l for l in lines))
 
+# guard runs the order test itself once the market opens, and confirms the first real stop
+class FL(Fake):
+    live = True
+    def stock_quote(self, sym): return {"price": 767.4 if sym == "SPY" else 741.0}
+def buy(f): f.held = 1
+FLn = FL([1.10] * 200, held=0, events={40: buy})
+L = run(FLn, start="08:25", end="08:35")
+check("16 guard: order test waits for 8:30, passes, and the first stop is confirmed",
+      any("ORDER TEST PASSED" in l for l in L) and any("STOP ORDER CONFIRMED" in l for l in L)
+      and not any("TEST 1" in l for l in L[:3]) and len(FLn.resting()) == 1)
+FLr = FL([1.10] * 200, held=0, reject_sells=0); FLr.place_option = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("HTTP 400 bad order"))
+L = run(FLr, start="08:29", end="08:32")
+check("17 guard: a failed order test is reported and the guard keeps running",
+      any("ORDER TEST FAILED" in l for l in L) and any("GUARD summary" in l for l in L))
+
 # option_positions parsing with the real Webull JSON shape (from the account, Friday)
 raw = [{"currency":"USD","quantity":"1","cost":"56.00","legs":[{"symbol":"QQQ","cost":"0.56","instrument_type":"OPTION",
         "option_type":"CALL","option_expire_date":"2026-09-25","option_exercise_price":"744"}],"symbol":"QQQ",

@@ -50,7 +50,7 @@ def now_ct():
 def log(msg):
     line = f"{now_ct():%Y-%m-%d %H:%M:%S} CT  {msg}"
     print(line, flush=True)
-    with open(os.path.join(LOG_DIR, f"bot-{now_ct():%Y-%m-%d}.log"), "a") as f:
+    with open(os.path.join(LOG_DIR, f"bot-{now_ct():%Y-%m-%d}.log"), "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
 
@@ -623,6 +623,7 @@ GUARD_DEFAULTS = {
     "lockout_losses": 2,
     "lockout_loss": 25,
     "warn_loss": 20,                  # just a heads-up in the log when the day's realized loss reaches this
+    "startup_test": True,             # live: place+cancel a $0.01 test order when the market is open
     "warnings": True,                 # trade warnings from the journal's patterns (never block anything)
     "midday_ct": ["10:30", "13:30"],  # warn on new trades in this window
     "reentry_min": 10,                # warn on a new trade this soon after a loss
@@ -685,6 +686,9 @@ def guard(broker, risk, cfg):
     done_states = ("CANCELLED", "CANCELED", "REJECTED", "FAILED", "EXPIRED")
     tracked, day = {}, {"realized": 0.0, "losses": 0, "closed": 0, "opened": 0}
     warned, first_pass, last_beat = False, True, 0.0
+    test_pending = bool(g["startup_test"] and getattr(broker, "live", False))
+    if test_pending:
+        log("order test: runs once the market is open (8:30 CT) — a $0.01 buy that cannot fill, then cancelled")
     first = (f"first stop {g['risk_pct']:.0%} under entry, risk ${g['risk_min']}-${g['risk_max']} per trade"
              if g.get("risk_pct") else f"stop -{g['stop_pct']:.0%}")
     log(f"GUARD on: {first}, ladder {g['ladder']}, trail {g['trail_pct']:.0%} after "
@@ -779,6 +783,14 @@ def guard(broker, risk, cfg):
         if now.time() >= hm(g["end_time_ct"]):
             break
         try:
+            if test_pending and now.weekday() < 5 and hm("08:30") <= now.time() < hm("14:45"):
+                test_pending = False
+                ok = order_test(broker, with_stop=False)
+                if ok:
+                    log("ORDER TEST PASSED — Webull accepts the bot's orders")
+                elif ok is False:
+                    log("!! ORDER TEST FAILED — send me this window. The guard keeps running and will watch "
+                        "your stops itself if Webull rejects them.")
             pos = broker.option_positions()
             # positions gone: our stop filled, or sold by hand in the app
             for occ, t in list(tracked.items()):
@@ -864,6 +876,9 @@ def guard(broker, risk, cfg):
                         if not t.get("cancelling"):
                             log(f"!! the stop on {occ} was {st.lower()}")
                         t["oid"] = None
+                    elif st and not day.get("stop_ok"):
+                        day["stop_ok"] = True
+                        log(f"STOP ORDER CONFIRMED — Webull shows the stop on {occ} as {st}. Stops work.")
                 # a position that was already under its stop when GUARD started: don't dump it on sight
                 if bid is not None and t.get("startup") and not t.get("seen") and bid <= t["stop"]:
                     old, t["stop"] = t["stop"], r2(max(0.01, bid * 0.85))
@@ -918,13 +933,14 @@ def guard(broker, risk, cfg):
         f"Stop orders are DAY orders: run guard again tomorrow for anything held overnight.")
 
 
-def testorder(broker):
+ORDER_DONE = ("CANCELLED", "CANCELED", "REJECTED", "FAILED", "EXPIRED")
+
+
+def order_test(broker, with_stop=True):
     """Prove Webull accepts the bot's orders without risking money: a $0.01 buy on an at-the-money SPY call
-    (cannot fill) is placed and cancelled; if you hold an option, a $0.01 stop-limit sell is placed and cancelled."""
-    if not broker.live:
-        log('PAPER mode: run  python bot.py --live testorder  (nothing can fill: every test order is at $0.01)')
-        return
-    done_states = ("CANCELLED", "CANCELED", "REJECTED", "FAILED", "EXPIRED")
+    (cannot fill) is placed and cancelled; with_stop and an option held: a $0.01 stop-limit sell on it too.
+    Returns True/False for the limit-order test (None if it could not run)."""
+    done_states = ORDER_DONE
 
     def detail(oid):
         try:
@@ -966,14 +982,16 @@ def testorder(broker):
         exp += timedelta(days=1)
     spot = broker.stock_quote("SPY")["price"]
     if not spot:
-        log("no SPY price — try again during market hours")
-        return
+        log("order test: no SPY price — try again during market hours")
+        return None
     occ = occ_symbol("SPY", exp, "C", round(spot))
     q = broker.option_quotes([occ]).get(occ)
     if q and 0 < q["ask"] < 0.10:
-        log(f"{occ} ask is only {q['ask']:.2f}; a $0.01 order is not safely unfillable — skipping")
-        return
+        log(f"order test: {occ} ask is only {q['ask']:.2f}; a $0.01 order is not safely unfillable — skipping")
+        return None
     ok1 = place_cancel("TEST 1 (limit order)", occ, "BUY", 1, 0.01)
+    if not with_stop:
+        return ok1
 
     ok2 = None
     held = broker.option_positions()
@@ -992,6 +1010,14 @@ def testorder(broker):
                     "that also blocks this test)")
     log("RESULT: " + ("orders work" if ok1 else "limit orders FAILED — send me this window") +
         ("" if ok2 is None else ("; stop-limit orders work" if ok2 else "; stop-limit FAILED — send me this window")))
+    return ok1
+
+
+def testorder(broker):
+    if not broker.live:
+        log('PAPER mode: run  python bot.py --live testorder  (nothing can fill: every test order is at $0.01)')
+        return
+    order_test(broker, with_stop=True)
 
 
 def rsi2_scan(broker):
