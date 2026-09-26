@@ -36,6 +36,29 @@ python bot.py --live watch QQQ --call-above 742.7 --put-below 740.2 --auto
 python bot.py --live manage SPY260924C00769000 --entry 0.58     # protect a position you bought yourself
 ```
 
+## 3b. Trade Guardian (recommended way to use the bot)
+You pick the trades in the Webull app; the Guardian manages every exit.
+```
+python bot.py --live guard      # real stop orders
+python bot.py guard             # dry run: reads your real positions, only simulates the orders
+```
+- Any option you buy gets a real **stop-limit sell order in Webull within ~5 seconds** (entry −35%).
+  It stays at Webull even if your PC shuts off.
+- The stop only moves up: **breakeven at +40%**, **locks +30% at +80%**, **locks +90% at +150%**, then trails
+  **25% under the highest bid**.
+- If the stop gets cancelled it is put back. If you sell in the app, the Guardian removes its stop order.
+- Same-day options are sold at `flatten_time_ct` (2:50 PM CT), with a warning at 2:30.
+- Warns when one trade is more than 30% of the account.
+- Optional lockout: after 2 losses or −$25 in a day, any new position is sold right away.
+
+Change any of these by adding a `"guard"` block to `config.json`, for example:
+```json
+"guard": { "stop_pct": 0.35, "trail_pct": 0.25, "lockout": true, "lockout_loss": 25 }
+```
+Moving the stop up needs the bot running; the resting stop order protects you either way.
+If Webull rejects the stop order type, the log says so and the Guardian watches the stop itself instead
+(that fallback only works while the bot runs).
+
 ## 4. Safety limits (config.json → "risk")
 | Setting | Default | Meaning |
 |---|---|---|
