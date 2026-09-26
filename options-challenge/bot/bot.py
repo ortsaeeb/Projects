@@ -592,6 +592,7 @@ def auto(broker, risk, cfg):
 
 GUARD_DEFAULTS = {
     "risk_dollars": 10,               # first stop: lose at most this much per trade (all contracts together)...
+    "risk_tiers": [[0.60, 20]],       # [option price at or above, risk $]: pricier contracts get a wider stop
     "stop_pct": 0.35,                 # ...or, with risk_dollars set to 0, entry -35%
     "ladder": [[0.40, 0.00], [0.80, 0.30], [1.50, 0.90]],  # [peak gain reached, gain locked by the stop]
     "trail_after": 1.50,              # above +150%, also trail...
@@ -612,7 +613,11 @@ def guard_stop(t, g):
     """Stop price for a tracked position from its entry and highest bid (never lower than before)."""
     gain = t["peak"] / t["entry"] - 1
     if g.get("risk_dollars"):
-        stop = max(0.05, t["entry"] - g["risk_dollars"] / (100 * t["qty"]))
+        risk = g["risk_dollars"]
+        for price, dollars in sorted(g.get("risk_tiers") or []):
+            if t["entry"] >= price:
+                risk = dollars
+        stop = max(0.05, t["entry"] - risk / (100 * t["qty"]))
     else:
         stop = t["entry"] * (1 - g["stop_pct"])
     for reached, lock in g["ladder"]:

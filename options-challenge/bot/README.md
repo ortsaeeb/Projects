@@ -43,7 +43,7 @@ python bot.py --live guard      # real stop orders
 python bot.py guard             # dry run: reads your real positions, only simulates the orders
 ```
 - Any option you buy gets a real **stop-limit sell order in Webull within ~5 seconds**, placed so the trade
-  loses at most **$10** (`risk_dollars`; set it to 0 to use `stop_pct` −35% instead).
+  loses at most **$10**, or **$20** when the option costs $0.60 or more (`risk_dollars`, `risk_tiers`; set it to 0 to use `stop_pct` −35% instead).
   It stays at Webull even if your PC shuts off.
 - The stop only moves up: **breakeven at +40%**, **locks +30% at +80%**, **locks +90% at +150%**, then trails
   **25% under the highest bid**.
