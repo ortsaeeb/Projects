@@ -200,8 +200,12 @@ check("20 old KILL file from a previous day is removed", any("removed an old KIL
 open(kill, "w").close()
 t1 = datetime(2026, 9, 28, 10, 0, tzinfo=bot.CT).timestamp(); os.utime(kill, (t1, t1))
 F20b = Fake([0.56] * 60); L = run(F20b)
-check("20b today's KILL file is obeyed (position sold)", any("KILL file is present" in l for l in L) and F20b.held == 0)
+check("20b today's KILL file is obeyed (position sold)", any("KILL is present" in l for l in L) and F20b.held == 0)
 os.remove(kill)
+kill_txt = os.path.join(bot.HERE, "KILL.txt")  # made with Notepad: Windows hides the .txt
+F20c = Fake([0.56] * 60, events={5: lambda f: open(kill_txt, "w").close()}); L = run(F20c)
+check("20c KILL.txt made during the day works too", F20c.held == 0 and any("KILL file" in l and "CLOSED" in l for l in L))
+os.remove(kill_txt)
 
 # only one guard at a time
 LOCK = os.path.join(bot.LOG_DIR, "guard.lock")

@@ -19,7 +19,7 @@ Commands (run `python bot.py -h` for all flags):
   rsi2                         daily RSI(2) pullback scan on SPY/QQQ/IWM (the strategy that backtested well)
 
 Safety: max cost per trade, max trades per day, max daily loss, no new entries after 14:30 CT,
-forced exit at flatten_time_ct, and a kill switch: create a file named KILL in this folder to stop all entries.
+forced exit at flatten_time_ct, and a kill switch: create a file named KILL (or KILL.txt; KILL.bat does it) in this folder to stop all entries.
 """
 import argparse
 import csv
@@ -85,6 +85,14 @@ EARLY_CLOSE = {"2026-11-27", "2026-12-24", "2027-11-26"}
 
 def market_day(d):
     return d.weekday() < 5 and f"{d:%Y-%m-%d}" not in HOLIDAYS
+
+
+KILL_FILES = ("KILL", "KILL.txt")  # KILL.txt too: Notepad and right-click > New add ".txt" and Windows hides it
+
+
+def kill_paths():
+    """The KILL switch files that exist in the bot folder (KILL.bat creates one, UNKILL.bat removes them)."""
+    return [p for p in (os.path.join(HERE, n) for n in KILL_FILES) if os.path.exists(p)]
 
 
 PENNY = {"SPY", "QQQ", "IWM"}  # $0.01 ticks at every price; most other options use $0.05 at $3 and up
@@ -154,7 +162,7 @@ class RiskState:
             log(f"!! could not save today's totals ({e})")
 
     def can_enter(self, cost):
-        if os.path.exists(os.path.join(HERE, "KILL")):
+        if kill_paths():
             return False, "KILL file present"
         t = now_ct().time()
         if not (datetime.strptime("08:35", "%H:%M").time() <= t <= datetime.strptime("14:30", "%H:%M").time()):
@@ -420,7 +428,7 @@ def manage_step(broker, risk, occ, qty, entry, cfg, st, trail_at, flatten):
         reason = f"stop hit (bid {q['bid']:.2f} <= {st['stop']:.2f})"
     elif now_ct().time() >= flatten:
         reason = f"flatten time {flatten:%H:%M} CT"
-    elif os.path.exists(os.path.join(HERE, "KILL")):
+    elif kill_paths():
         reason = "KILL file"
     if not reason:
         return False
@@ -547,10 +555,9 @@ def auto(broker, risk, cfg):
     """Fully automatic day: levels = 15-min opening range, then trade confirmed breakouts until 14:30 CT."""
     a = {**AUTO_DEFAULTS, **cfg.get("auto", {})}
     syms = [s.upper() for s in a["symbols"]]
-    kill = os.path.join(HERE, "KILL")
     log(f"AUTO {syms}: waiting for the 15-min opening range (08:30-08:45 CT)")
     while now_ct().time() < hm("08:46"):
-        if os.path.exists(kill):
+        if kill_paths():
             log("KILL file present — not trading today")
             return
         time.sleep(20)
@@ -712,7 +719,6 @@ def guard(broker, risk, cfg):
     same-day options at flatten time. Entries stay manual."""
     g = {**GUARD_DEFAULTS, **cfg.get("guard", {})}
     flatten = hm(cfg["risk"]["flatten_time_ct"])
-    kill = os.path.join(HERE, "KILL")
     done_states = ("CANCELLED", "CANCELED", "REJECTED", "FAILED", "EXPIRED")
     tracked, day = {}, {"realized": 0.0, "losses": 0, "closed": 0, "opened": 0}
     flat_txt = cfg["risk"]["flatten_time_ct"]
@@ -723,12 +729,13 @@ def guard(broker, risk, cfg):
         log("EARLY CLOSE today (12:00 CT): same-day options will be closed at 11:50 CT")
     if not market_day(today):
         log("market is closed today (weekend/holiday) — the guard will just watch")
-    if os.path.exists(kill):
+    for kill in kill_paths():
         if datetime.fromtimestamp(os.path.getmtime(kill), CT).date() < today:
             os.remove(kill)
-            log("removed an old KILL file from a previous day")
+            log(f"removed an old {os.path.basename(kill)} file from a previous day")
         else:
-            log("!! KILL file is present: every option position will be SOLD. Delete bot\\KILL to trade normally.")
+            log(f"!! {os.path.basename(kill)} is present: every option position will be SOLD. "
+                f"Double-click UNKILL.bat to trade normally.")
     lock = os.path.join(LOG_DIR, "guard.lock")
 
     def lock_age():
@@ -1008,7 +1015,7 @@ def guard(broker, risk, cfg):
                 if parse_occ(occ)[1] == now.date() and now.time() >= flatten:
                     exit_now(occ, t, f"flatten {flat_txt} CT")
                     continue
-                if os.path.exists(kill):
+                if kill_paths():
                     exit_now(occ, t, "KILL file")
                     continue
                 if bid is None:

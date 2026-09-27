@@ -63,7 +63,7 @@ python bot.py guard             # dry run: reads your real positions, only simul
   waits 1 minute before putting a stop back, and cleans up once the position is gone.
 - If the stop is cancelled and you still hold the option after 1 minute, the stop goes back on.
 - Only one Guardian window can run at a time (a second one refuses to start).
-- A `KILL` file left over from a previous day is deleted at startup; today's `KILL` file sells everything.
+- **KILL switch:** double-click `KILL.bat` in the bot folder (it asks Y/N first). The Guardian sells every option position within about 5 seconds and keeps selling anything you buy until you double-click `UNKILL.bat`. It works only while the Guardian window is open. A file named `KILL` or `KILL.txt` does the same thing. One left over from a previous day is deleted at startup.
 - Early-close days (day after Thanksgiving, Christmas Eve): same-day options are closed at 11:50 CT.
 - If Webull can't be reached, the log says so once (then every 5 minutes); stops already placed stay active.
 - Same-day options are sold at `flatten_time_ct` (2:50 PM CT), with a warning at 2:30.
@@ -98,7 +98,7 @@ If Webull rejects the stop order type, the log says so and the Guardian watches 
 | flatten_time_ct | 14:50 | sells anything still open at 2:50 PM CT |
 
 After a +40% move the stop automatically rises to breakeven.
-**Kill switch:** create an empty file named `KILL` in this folder — the bot stops entering and exits open trades.
+**Kill switch:** double-click `KILL.bat` (or create a file named `KILL` or `KILL.txt` in this folder). The bot stops entering and exits open trades. `UNKILL.bat` turns it off.
 
 ## 5. Important
 - The bot enforces discipline; it does **not** create an edge. The backtests (RESEARCH.md) found no
