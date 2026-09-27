@@ -229,6 +229,45 @@ F21c = Fake([0.56] * 20); L = run(F21c)
 check("21c damaged state file: guard still starts and protects", any("damaged" in l for l in L) and len(F21c.resting()) == 1)
 if keep is not None: open(st, "w").write(keep)
 
+# Webull partly down at 14:50: the same-day option still gets sold
+F22 = Fake([0.56] * 300, status_raise_at=set(range(12, 400))); L = run(F22, start="14:45", end="14:56")
+check("24 order-status calls failing: still sold at 14:50", F22.held == 0 and not any("guard error" in l for l in L))
+class PosDown(Fake):
+    def option_positions(self):
+        if self.k >= 12: raise RuntimeError("HTTP 503 (simulated)")
+        return super().option_positions()
+F22b = PosDown([0.56] * 300); L = run(F22b, start="14:45", end="14:56")
+check("24b positions call failing: still sold at 14:50", F22b.held == 0 and any("can't read positions" in l for l in L))
+class QuotesDown(Fake):
+    def option_quotes(self, occs):
+        if self.k >= 12: raise RuntimeError("HTTP 503 (simulated)")
+        return super().option_quotes(occs)
+F22c = QuotesDown([0.56] * 300); L = run(F22c, start="14:45", end="14:56")
+check("24c quotes failing: still sold at 14:50", F22c.held == 0)
+
+# bought the same contract again right after the guard closed it: the new trade is protected
+class Lag(Fake):
+    lag = 1
+    def option_positions(self):
+        if self.held == 0 and self.lag > 0:
+            self.lag -= 1; return {OCC: {"qty": 1, "cost": self.cost}}
+        return super().option_positions()
+def kill_on(f): open(kill, "w").close()
+def kill_off_rebuy(f): os.remove(kill); f.held, f.cost = 1, 0.60
+F23 = Lag([0.56] * 300, events={6: kill_on, 9: kill_off_rebuy}); L = run(F23, start="10:50", end="10:55")
+check("25 re-bought right after a close: new trade protected",
+      any("NEW POSITION" in l and "0.60" in l for l in L) and len(F23.resting()) == 1)
+
+# cost reported per contract (56.00) instead of per share (0.56): not dumped
+def add_one(f):  # buy a 2nd contract at 0.60: Webull's average cost becomes 58.00 (per contract)
+    for o in f.orders.values():
+        if o["status"] == "SUBMITTED": o["status"] = "CANCELLED"
+    f.held, f.cost = 2, 58.0
+F26 = Fake([0.56] * 60, cost=56.0, events={10: add_one}); L = run(F26)
+check("26 per-contract cost is caught, trade kept and protected (also after adding a contract)",
+      F26.held == 2 and len(F26.resting()) == 1 and 0.40 < F26.resting()[0]["stop"] < 0.58
+      and any("per-contract" in l for l in L) and any("-> 2" in l for l in L))
+
 # early close day (day after Thanksgiving): same-day options out at 11:50 CT
 OCC_SAVE = OCC
 OCC = "QQQ261127C00744000"

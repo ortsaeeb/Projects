@@ -343,7 +343,10 @@ class PaperBroker(Broker):
 # ----------------------------------------------------------------- trading logic
 def wait_fill(broker, coid, seconds, poll):
     for _ in range(max(1, int(seconds / max(poll, 1)))):
-        status, filled, px = broker.order_status(coid)
+        try:
+            status, _, px = broker.order_status(coid)
+        except Exception:  # status unreachable for a moment: keep waiting, don't abandon the order
+            status, px = "", 0
         if "FILLED" in status and "PARTIAL" not in status:
             return px
         if status in ("CANCELLED", "REJECTED", "FAILED", "EXPIRED"):
@@ -352,16 +355,22 @@ def wait_fill(broker, coid, seconds, poll):
     return None
 
 
-def sell_now(broker, occ, qty, poll):
-    """Aggressive exit: sell at bid, re-price down up to 4 times."""
+def sell_now(broker, occ, qty, poll, last_bid=0):
+    """Aggressive exit: sell at bid, re-price down up to 4 times. No quote? Price off last_bid."""
     for step in (0.00, 0.02, 0.05, 0.10, 0.20):
-        q = broker.option_quotes([occ]).get(occ, {"bid": 0})
-        px = max(0.01, tick_down(occ, q["bid"] - step))
+        try:
+            bid = broker.option_quotes([occ]).get(occ, {"bid": 0})["bid"]
+        except Exception:  # quotes down: the last bid we saw is the best guess
+            bid = last_bid
+        px = max(0.01, tick_down(occ, bid - step))
         coid = broker.place_option(occ, "SELL", qty, px)
         got = wait_fill(broker, coid, 15, poll)
         if got is not None:
             return got
-        broker.cancel(coid)
+        try:
+            broker.cancel(coid)
+        except Exception as e:
+            log(f"cancel sell: {short_err(e)}")
     log("!! could not exit automatically — SELL MANUALLY IN WEBULL")
     return None
 
@@ -792,6 +801,19 @@ def guard(broker, risk, cfg):
         log("!! old stop not confirmed cancelled yet")
         return None
 
+    def stop_status(t):
+        """Status of our stop order; ("", 0, 0) = unknown when Webull can't be reached (never aborts the pass)."""
+        try:
+            st = broker.order_status(t["oid"])
+            t["status_err"] = False
+            return st
+        except Exception as e:
+            if not t.get("status_err"):
+                t["status_err"] = True
+                log(f"!! can't read the stop order's status ({short_err(e)}) — the stop stays at Webull; "
+                    f"GUARD keeps watching the price, the 14:50 exit and the safety net")
+            return "", 0, 0
+
     def close(occ, t, px, why, est=False):
         pnl = (px - t["entry"]) * 100 * t["qty"] if px is not None else None
         if pnl is not None:
@@ -816,7 +838,7 @@ def guard(broker, risk, cfg):
         px = cancel_stop(t)
         if px is None:
             try:
-                px = sell_now(broker, occ, t["qty"], cfg["poll_seconds"])
+                px = sell_now(broker, occ, t["qty"], cfg["poll_seconds"], t.get("last_bid") or 0)
             except Exception as e:
                 log(f"sell failed: {short_err(e)}")
                 px = None
@@ -850,7 +872,20 @@ def guard(broker, risk, cfg):
                 elif ok is False:
                     log("!! ORDER TEST FAILED — send me this window. The guard keeps running and will watch "
                         "your stops itself if Webull rejects them.")
-            pos = broker.option_positions()
+            try:
+                pos, pos_ok = broker.option_positions(), True
+                if day.get("per_contract"):  # Webull reports cost per contract: convert to per share
+                    pos = {o: dict(p, cost=p["cost"] / 100) for o, p in pos.items()}
+                if day.get("pos_err"):
+                    day["pos_err"] = False
+                    log("positions readable again")
+            except Exception as e:  # can't read positions: keep managing the ones already tracked
+                pos, pos_ok = {o: {"qty": t["qty"], "cost": t["entry"]} for o, t in tracked.items()
+                               if not t.get("closed")}, False
+                if not day.get("pos_err"):
+                    day["pos_err"] = True
+                    log(f"!! can't read positions ({short_err(e)}) — GUARD keeps managing the "
+                        f"{len(pos)} it already knows (new trades show up once Webull answers again)")
             # positions gone: our stop filled, or sold by hand in the app
             for occ, t in list(tracked.items()):
                 if occ in pos:
@@ -860,7 +895,7 @@ def guard(broker, risk, cfg):
                     del tracked[occ]
                     continue
                 if t.get("oid"):
-                    st, _, fpx = broker.order_status(t["oid"])
+                    st, _, fpx = stop_status(t)
                     if filled(st):
                         close(occ, t, fill_px(fpx, t), "stop filled")
                         del tracked[occ]
@@ -874,8 +909,15 @@ def guard(broker, risk, cfg):
             # new positions, or contracts added / partly sold
             for occ, p in pos.items():
                 t = tracked.get(occ)
+                if t and t.get("closed"):
+                    # we closed it but it's still listed: Webull lagging, or you bought it again
+                    t["lingers"] = t.get("lingers", 0) + 1
+                    if p["cost"] == t["entry"] and t["lingers"] < 3:
+                        continue  # probably lag: give Webull a few seconds
+                    del tracked[occ]  # bought again: guard it as a new trade
+                    t = None
                 if t:
-                    if not t.get("closed") and t["qty"] != p["qty"]:
+                    if t["qty"] != p["qty"]:
                         log(f"{occ}: quantity changed {t['qty']} -> {p['qty']}, resetting the stop")
                         cancel_stop(t)
                         t.update(qty=p["qty"], entry=p["cost"] or t["entry"], stop=0.0)
@@ -908,7 +950,8 @@ def guard(broker, risk, cfg):
                             f"{entry * 100 * p['qty'] / acct:.0%} of the account (limit {g['size_alert_pct']:.0%})")
                 except Exception:
                     pass
-            first_pass = False
+            if pos_ok:
+                first_pass = False
 
             live = [o for o, t in tracked.items() if not t.get("closed")]
             try:
@@ -927,7 +970,7 @@ def guard(broker, risk, cfg):
                     continue
                 # our stop order: filled? cancelled or rejected?
                 if t.get("oid"):
-                    st, _, fpx = broker.order_status(t["oid"])
+                    st, _, fpx = stop_status(t)
                     if filled(st):
                         close(occ, t, fill_px(fpx, t), "stop filled")
                         continue
@@ -943,6 +986,14 @@ def guard(broker, risk, cfg):
                     elif st and not st.startswith("PENDING") and not day.get("stop_ok"):
                         day["stop_ok"] = True
                         log(f"STOP ORDER CONFIRMED — Webull shows the stop on {occ} as {st}. Stops work.")
+                # Webull's cost should be per share (0.56); 20x the bid means it came per contract (56)
+                if bid is not None and not t.get("seen") and t["entry"] > 20 * bid:
+                    cancel_stop(t)
+                    day["per_contract"] = True  # every later read gets converted too
+                    t.update(entry=t["entry"] / 100, peak=t["peak"] / 100, stop=0.0)
+                    t["stop"] = guard_stop(t, g)
+                    log(f"!! {occ}: cost looked like a per-contract price — using entry {t['entry']:.2f}, "
+                        f"stop {t['stop']:.2f}. Check this matches your fill in Webull.")
                 # a position that was already under its stop when GUARD started: don't dump it on sight
                 if bid is not None and t.get("startup") and not t.get("seen") and bid <= t["stop"]:
                     old, t["stop"] = t["stop"], r2(max(0.01, bid * 0.85))

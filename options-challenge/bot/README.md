@@ -9,7 +9,7 @@ It sees live option bid/ask, places and cancels orders by itself, and manages ex
 2. Get this folder onto your computer:
    `git clone https://github.com/ortsaeeb/projects.git` then `cd projects/options-challenge/bot`
    (branch `claude/webull-options-trading-oyic74`: `git checkout claude/webull-options-trading-oyic74`)
-3. Install the Webull SDK: `pip install webull-openapi-python-sdk`
+3. Install the Webull SDK: `pip install webull-openapi-python-sdk tzdata` (tzdata gives Windows the Central time zone)
 4. Copy `config.example.json` to `config.json` and fill in **app_key, app_secret, account_id**
    (from Webull's OpenAPI / developer page). `config.json` is git-ignored — **never share it or commit it.**
 5. First run: `python bot.py check`
