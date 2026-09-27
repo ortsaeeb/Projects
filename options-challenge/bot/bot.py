@@ -138,10 +138,20 @@ class RiskState:
         self.path = os.path.join(LOG_DIR, f"state-{now_ct():%Y-%m-%d}.json")
         self.s = {"trades": 0, "realized": 0.0}
         if os.path.exists(self.path):
-            self.s = json.load(open(self.path))
+            try:
+                with open(self.path) as f:
+                    self.s = json.load(f)
+            except (OSError, ValueError):  # half-written (window closed mid-save): start the day's totals over
+                log(f"!! {os.path.basename(self.path)} was damaged — today's trade count and P/L restart at 0")
 
     def save(self):
-        json.dump(self.s, open(self.path, "w"))
+        tmp = self.path + ".tmp"
+        try:
+            with open(tmp, "w") as f:
+                json.dump(self.s, f)
+            os.replace(tmp, self.path)  # swap in the finished file, so a closed window never leaves half a file
+        except OSError as e:  # e.g. antivirus holding the file: the totals are only bookkeeping, keep guarding
+            log(f"!! could not save today's totals ({e})")
 
     def can_enter(self, cost):
         if os.path.exists(os.path.join(HERE, "KILL")):
@@ -711,12 +721,22 @@ def guard(broker, risk, cfg):
         else:
             log("!! KILL file is present: every option position will be SOLD. Delete bot\\KILL to trade normally.")
     lock = os.path.join(LOG_DIR, "guard.lock")
-    try:
-        if now_ct().timestamp() - float(open(lock).read() or 0) < 30:
+
+    def lock_age():
+        try:
+            with open(lock) as f:
+                return now_ct().timestamp() - float(f.read() or 0)
+        except (OSError, ValueError):
+            return None  # no lock file: no other Guardian
+
+    age = lock_age()
+    if age is not None and age < 30:  # another window, or one you closed a moment ago: wait and see
+        log("another Guardian was running a moment ago — checking it's gone (up to 30s)...")
+        time.sleep(31 - age)
+        age = lock_age()
+        if age is not None and age < 30:  # it updated the lock again: it's really running
             log("!! another Guardian window is already running — close this one (two would fight over the stops)")
             return
-    except (OSError, ValueError):
-        pass
     warned, first_pass, last_beat = False, True, 0.0
     test_pending = bool(g["startup_test"] and getattr(broker, "live", False))
     if test_pending:

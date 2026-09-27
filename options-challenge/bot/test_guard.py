@@ -1,5 +1,5 @@
 """Offline tests for the Trade Guardian (no Webull connection). Run:  python test_guard.py"""
-import sys, os, shutil, json, tempfile
+import sys, os, tempfile
 from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bot
@@ -204,10 +204,30 @@ check("20b today's KILL file is obeyed (position sold)", any("KILL file is prese
 os.remove(kill)
 
 # only one guard at a time
-open(os.path.join(bot.LOG_DIR, "guard.lock"), "w").write(str(datetime(2026, 9, 28, 10, 49, 50, tzinfo=bot.CT).timestamp()))
+LOCK = os.path.join(bot.LOG_DIR, "guard.lock")
+def other_window_alive(f):  # the other window keeps writing the lock every 5s
+    open(LOCK, "w").write(str(clock[0].timestamp()))
+open(LOCK, "w").write(str(datetime(2026, 9, 28, 10, 49, 50, tzinfo=bot.CT).timestamp()))
+real_tick = Fake.tick
+Fake.tick = lambda self: (real_tick(self), other_window_alive(self))
 F21 = Fake([0.56] * 20); L = run(F21)
+Fake.tick = real_tick
 check("21 a second guard window refuses to start", any("already running" in l for l in L) and not F21.orders)
-os.remove(os.path.join(bot.LOG_DIR, "guard.lock"))
+if os.path.exists(LOCK): os.remove(LOCK)
+
+# closed the window and restarted within 30s: the new one waits, then takes over
+open(LOCK, "w").write(str(datetime(2026, 9, 28, 10, 49, 50, tzinfo=bot.CT).timestamp()))
+F21b = Fake([0.56] * 20); L = run(F21b)
+check("21b restarted right after closing: takes over after a short wait",
+      not any("already running" in l for l in L) and len(F21b.resting()) == 1)
+
+# a state file cut off mid-save (window closed at the wrong moment) doesn't stop the guard
+st = os.path.join(bot.LOG_DIR, "state-2026-09-28.json")
+keep = open(st).read() if os.path.exists(st) else None
+open(st, "w").write('{"trades": 1, "real')
+F21c = Fake([0.56] * 20); L = run(F21c)
+check("21c damaged state file: guard still starts and protects", any("damaged" in l for l in L) and len(F21c.resting()) == 1)
+if keep is not None: open(st, "w").write(keep)
 
 # early close day (day after Thanksgiving): same-day options out at 11:50 CT
 OCC_SAVE = OCC
