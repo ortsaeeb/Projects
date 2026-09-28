@@ -15,6 +15,15 @@
 | 2026-09-25 | Manual (user) — failed-breakout put | QQQ 741P 0DTE | 0.43 | ~0.36 | 1 | −7.12 | ~−16% | Partly — half-confirmed (QQQ < 744.6, SPY held 770.1), no stop | Sold ~11:25 CT as QQQ bounced back to 744.2. |
 | 2026-09-25 | Manual (user) — far OTM call in lunch drift | QQQ 748C 0DTE | 0.35 | ~0.22 | 1 | −13.12 | ~−37% | No — $3 OTM, low volume, no stop | Sold ~11:33 CT with QQQ 745.4. |
 | 2026-09-25 | Manual (user) — second failed-breakout put, last trade | QQQ 741P 0DTE | 0.26 | ~0.16 | 1 | −10.12 | ~−38% | Partly — half-confirmed, no stop, lunch chop | SPY held 770.1; closed ~12:01 CT. User stopped for the day. |
+| 2026-09-28 | Manual — put, entered before the 5-min close confirmed | QQQ 730P 0DTE | 0.22 | 0.13 | 1 | −9.12 | −41% | Partly — Guardian stop placed in 4 s; sold by hand after 90 s | 8:52–8:53 CT. $7 OTM. QQQ fell to 731.6 later: holding would have paid. |
+| 2026-09-28 | Manual — put re-entry | QQQ 731P 0DTE | 0.20 | 0.15 | 1 | −5.12 | −25% | Partly — stop placed in 5 s; sold by hand | 8:56–8:58 CT, during the 3rd failed breakdown. |
+| 2026-09-28 | Manual — put after the confirmed 9:05 break (trade #3) | QQQ 731P 0DTE | 0.40 | 0.29 | 1 | −11.12 | −28% | No — over the 2-trade max; sold by hand | 9:14–9:16 CT, bought after the move, sold on the bounce. |
+| 2026-09-28 | Manual — call against the trend (#4) | QQQ 741C 0DTE | 0.34 | 0.24 (Guardian stop) | 1 | −10.12 | −29% | No — no call trigger, over max | 9:18–9:29 CT. Stop worked as designed. |
+| 2026-09-28 | Manual — call against the trend (#5) | QQQ 740C 0DTE | 0.41 | 0.29 (Guardian stop) | 1 | −12.12 | −29% | No | 9:33–9:37 CT. |
+| 2026-09-28 | Manual — bounce call (#6) | QQQ 738C 0DTE | 0.31 | 0.25 | 1 | −6.12 | −19% | No — sold by hand | 9:50–9:54 CT. |
+| 2026-09-28 | Manual — same contract re-bought (#7) | QQQ 738C 0DTE | 0.32 | 0.31 (Guardian trail stop) | 1 | −1.12 | −3% | Stop managed it | 10:00–10:17 CT. Peaked 0.48 (+48%); first live TRAIL moved the stop to breakeven 0.32; filled 0.31. |
+| 2026-09-28 | Manual — put (#8) | QQQ 729P 0DTE | 0.28 | 0.26 | 1 | −2.12 | −7% | No — and no Guardian stop was placed | 10:18 CT, held 20 s. Guardian window likely paused (see notes). |
+| 2026-09-28 | Manual — call (#9) | QQQ 740C 0DTE | 0.22 | 0.12 (Guardian stop) | 1 | −10.12 | −45% | No | 10:25–10:43 CT. Guardian stop placed 1 m 43 s after the fill (window paused?). |
 
 ## Planned: $50 lottery ticket (Thu 2026-09-24, fallback Fri 2026-09-25)
 
@@ -48,6 +57,8 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
 | 2026-09-25 | QQQ 741P closed | −$7.12 | $185.53 | $192.65 |
 | 2026-09-25 | QQQ 748C closed | −$13.12 | $172.41 | $192.65 |
 | 2026-09-25 | QQQ 741P closed — done for the day | −$10.12 | $162.29 | $192.65 |
+| 2026-09-28 | Start of day per Webull ($162.29 − $122.57 = −$39.72 not reconciled: not in the Webull order history for today; check Friday after 12:01 CT / transfers) | −$39.72 | $122.57 | $192.65 |
+| 2026-09-28 | 9 trades (1 win-ish at −$1, 8 losses) — done for the day | −$67.08 | $55.49 | $192.65 |
 
 ## Notes 2026-09-24
 - Morning: 6 fake breakouts (4 up, 2 down) skipped by the volume + both-ETFs rule.
@@ -66,6 +77,22 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
   Two trades made the day (740P +$29.88 at the open, 744C +$117.88 on the 11:00 breakout); the other 10 net −$76.
 - Rules for next session: max 2 trades/day; stop placed immediately; no entries 10:30–13:30 CT; stop for the
   day after 2 losses or when green after a winner.
+
+## Notes 2026-09-28 (first live day of the Trade Guardian)
+- Plan: max 2 trades; QQQ/SPY levels from the volume profile (QQQ calls > 741.30, puts < 737.50, no-trade 737.5–741.3).
+- Market: gap down, 3 failed breakdowns 8:31–8:53 CT, then a real break at 9:05 CT; QQQ trended from 737.5 to 731.6 by 9:48.
+- Result: 9 trades, all closed at a loss (one −$1.12 at breakeven), day −$67.08 (Webull), balance $55.49.
+- What went wrong: 7 trades over the 2-trade max; the two puts taken in the right direction were sold by hand within
+  1–2 minutes instead of being left to the stop; calls #4–#7 were bought against the trend with no trigger.
+- What worked (Guardian, all proven live): 8:30 order test passed; stop orders accepted by Webull (STOP ORDER CONFIRMED);
+  stops placed 1–5 s after fills on trades 1–7; stepped aside when the user sold by hand; protected a re-bought contract;
+  first live TRAIL (stop 0.22 → 0.32 breakeven at +40%) turned a +48% peak into −$1 instead of a loss; 4 stop fills
+  capped losses at the planned ~$10–12.
+- Bug/issue to fix: after ~10:10 CT the Guardian went quiet (user's window output stopped at 10:09; trade #8 got no stop,
+  trade #9's stop came 1 m 43 s late). Most likely cause: selecting text in the cmd window (Windows "QuickEdit") pauses
+  the program until Esc/Enter. Fix candidate: turn QuickEdit off at Guardian startup.
+- Rules for next session: max 2 trades, enforced — lockout on (sell anything past trade 2) or KILL.bat after trade 2;
+  no selling by hand while the Guardian's stop is on; only trade the trigger direction; default quantity 1.
 
 ## Review every 5 trades
 
