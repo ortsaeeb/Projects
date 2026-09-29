@@ -87,6 +87,15 @@ Moving the stop up needs the bot running; the resting stop order protects you ei
 If Webull rejects the stop order type, the log says so and the Guardian watches the stop itself instead
 (that fallback only works while the bot runs).
 
+**The Guardian window (Windows):**
+- It turns off cmd's *QuickEdit* when it starts (you'll see "QuickEdit is off for this window"). Before this, selecting
+  text in the window paused the whole program until you pressed Esc. Copying still works: right-click → Mark.
+- If the program is paused anyway (PC asleep, etc.) it prints `!! GUARD was paused for X min` when it wakes, then
+  catches up. Stop orders already at Webull keep working while it is paused.
+- Closing and restarting it during the day is safe: it re-reads `logs/guard-state-DATE.json`, picks up its own stop
+  orders ("picked up the stop the last Guardian window left") and keeps trailing from the same best price.
+- Keep your PC from sleeping during market hours: Settings → System → Power & sleep → Sleep: Never.
+
 ## 4. Safety limits (config.json → "risk")
 | Setting | Default | Meaning |
 |---|---|---|

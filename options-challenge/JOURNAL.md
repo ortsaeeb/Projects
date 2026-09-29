@@ -24,6 +24,14 @@
 | 2026-09-28 | Manual — same contract re-bought (#7) | QQQ 738C 0DTE | 0.32 | 0.31 (Guardian trail stop) | 1 | −1.12 | −3% | Stop managed it | 10:00–10:17 CT. Peaked 0.48 (+48%); first live TRAIL moved the stop to breakeven 0.32; filled 0.31. |
 | 2026-09-28 | Manual — put (#8) | QQQ 729P 0DTE | 0.28 | 0.26 | 1 | −2.12 | −7% | No — and no Guardian stop was placed | 10:18 CT, held 20 s. Guardian window likely paused (see notes). |
 | 2026-09-28 | Manual — call (#9) | QQQ 740C 0DTE | 0.22 | 0.12 (Guardian stop) | 1 | −10.12 | −45% | No | 10:25–10:43 CT. Guardian stop placed 1 m 43 s after the fill (window paused?). |
+| 2026-09-28 | Manual — call (#10) | QQQ 739C 0DTE | 0.21 | 0.44 (Guardian trail stop) | 1 | +22.88 | +110% | Stop managed it | 10:48–11:19 CT. Trailed 0.11 → 0.21 → 0.27 → 0.41 → 0.44. |
+| 2026-09-28 | Manual — call, added a 2nd contract (#11) | QQQ 744C 0DTE | 0.135 avg | 0.09 (Guardian stop) | 2 | −9.24 | −33% | No | 11:21–11:23 CT. |
+| 2026-09-28 | Manual — call (#12) | QQQ 741C 0DTE | 0.40 | 0.79 (Guardian safety-net sell) | 1 | +38.88 | +98% | Stop managed it | 11:24–11:29 CT. Unprotected 11:24–11:28 (window paused); on resume trailed 0.28 → 0.77 → 0.80, stop-limit rejected above market, safety net sold at 0.79. Best was +$66. |
+| 2026-09-28 | Manual — put (#13) | QQQ 733P 0DTE | 0.23 | 0.13 | 1 | −10.12 | −43% | No | 12:01–12:24 CT. Guardian stop only from 12:20 (window paused 47 min). |
+| 2026-09-28 | Manual — call (#14) | QQQ 741C 0DTE | 0.37 | 0.25 (stop) | 1 | −12.12 | −32% | No | 12:25–12:26 CT. |
+| 2026-09-28 | Manual — call (#15) | QQQ 741C 0DTE | 0.29 | 0.31 | 1 | +1.88 | +7% | No | 12:31–12:34 CT, sold by hand. |
+| 2026-09-28 | Manual — call (#16) | QQQ 742C 0DTE | 0.23 | 0.22 | 1 | −1.12 | −4% | No | 12:35–12:37 CT, sold by hand. |
+| 2026-09-28 | Power hour — put on the 2:05 trigger (#17) | QQQ 736P 0DTE | 0.42 | 0.31 (user's own stop order) | 1 | −11.12 | −26% | Partly — valid trigger (1-cent close), but $42 = 75% of the account and no Guardian stop | 14:15–14:17 CT. QQQ then fell to 736.1 by 14:40. |
 
 ## Planned: $50 lottery ticket (Thu 2026-09-24, fallback Fri 2026-09-25)
 
@@ -58,7 +66,8 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
 | 2026-09-25 | QQQ 748C closed | −$13.12 | $172.41 | $192.65 |
 | 2026-09-25 | QQQ 741P closed — done for the day | −$10.12 | $162.29 | $192.65 |
 | 2026-09-28 | Start of day per Webull ($162.29 − $122.57 = −$39.72 not reconciled: not in the Webull order history for today; check Friday after 12:01 CT / transfers) | −$39.72 | $122.57 | $192.65 |
-| 2026-09-28 | 9 trades (1 win-ish at −$1, 8 losses) — done for the day | −$67.08 | $55.49 | $192.65 |
+| 2026-09-28 | Morning: 9 trades (8 losses, 1 at −$1) | −$67.08 | $55.49 | $192.65 |
+| 2026-09-28 | After 10:30: 8 more trades (3 wins: +$22.88, +$38.88, +$1.88) | +$19.95 | $75.44 | $192.65 |
 
 ## Notes 2026-09-24
 - Morning: 6 fake breakouts (4 up, 2 down) skipped by the volume + both-ETFs rule.
@@ -91,6 +100,11 @@ Backtest odds of a 10x on this setup: ~2% (see RESEARCH.md). $51 stays untouched
 - Bug/issue to fix: after ~10:10 CT the Guardian went quiet (user's window output stopped at 10:09; trade #8 got no stop,
   trade #9's stop came 1 m 43 s late). Most likely cause: selecting text in the cmd window (Windows "QuickEdit") pauses
   the program until Esc/Enter. Fix candidate: turn QuickEdit off at Guardian startup.
+- Afternoon (after the notes above): 8 more trades, net +$19.95. Both real winners (739C +$22.88, 741C +$38.88) were
+  exited by the Guardian's trailing stop / safety net. Final day per Webull: 17 trades, −$47.13, balance $75.44.
+- Guardian pauses confirmed from Webull timestamps: 11:23–11:28 CT and 11:33–12:20 CT (no heartbeat lines) while the
+  user copied text from the window. Fixed 09-28 night: QuickEdit is turned off at startup, a restarted Guardian picks
+  up its own stop orders (state in logs/guard-state-DATE.json), and any pause over ~40 s is reported when it wakes.
 - Rules for next session: max 2 trades, enforced — lockout on (sell anything past trade 2) or KILL.bat after trade 2;
   no selling by hand while the Guardian's stop is on; only trade the trigger direction; default quantity 1.
 

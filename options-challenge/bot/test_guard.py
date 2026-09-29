@@ -272,6 +272,27 @@ check("26 per-contract cost is caught, trade kept and protected (also after addi
       F26.held == 2 and len(F26.resting()) == 1 and 0.40 < F26.resting()[0]["stop"] < 0.58
       and any("per-contract" in l for l in L) and any("-> 2" in l for l in L))
 
+# the window was paused for 5 minutes (text selected / PC asleep): the Guardian says so when it wakes up
+def freeze(f): clock[0] += timedelta(minutes=5)
+F27 = Fake([0.56] * 40, events={4: freeze}); L = run(F27)
+check("27 a 5-minute pause is reported", any("was paused for 5.0 min" in l for l in L) and len(F27.resting()) == 1)
+
+# Guardian closed and started again: it picks up its own stop (and best price) instead of fighting it
+F28 = Fake([0.56, 0.70, 0.85, 1.00, 1.07] + [1.07] * 40)
+L1 = run(F28, start="10:50", end="10:52")
+before = [(o["stop"], o["qty"]) for o in F28.resting()]
+L2 = run(F28, start="10:53", end="10:55")
+check("28 restart picks up the old stop and keeps its best price",
+      any("picked up the stop" in l for l in L2) and not any("rejected" in l for l in L2)
+      and [(o["stop"], o["qty"]) for o in F28.resting()] == before and before and before[0][0] > 0.56)
+
+F28b = Fake([0.56, 0.70, 0.85, 1.00, 1.07] + [1.07] * 40, cost=56.0)  # Webull reporting cost per contract
+run(F28b, start="10:50", end="10:52"); before = [o["stop"] for o in F28b.resting()]
+L = run(F28b, start="10:53", end="10:55")
+check("28b restart with a per-contract cost keeps the right entry and stop",
+      any("picked up the stop" in l for l in L) and any("FOUND POSITION" in l and "@ 0.56" in l for l in L)
+      and [o["stop"] for o in F28b.resting()] == before and 0.56 < before[0] < 1.07)
+
 # early close day (day after Thanksgiving): same-day options out at 11:50 CT
 OCC_SAVE = OCC
 OCC = "QQQ261127C00744000"

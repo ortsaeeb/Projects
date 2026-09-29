@@ -87,6 +87,22 @@ def market_day(d):
     return d.weekday() < 5 and f"{d:%Y-%m-%d}" not in HOLIDAYS
 
 
+def console_no_quickedit():
+    """Windows cmd: turn QuickEdit off, so clicking or selecting text in the window can't pause the program."""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        handle = k32.GetStdHandle(-10)  # the console's input
+        mode = ctypes.c_uint32()
+        if not k32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        return bool(k32.SetConsoleMode(handle, (mode.value & ~0x0040) | 0x0080))  # QuickEdit off, keep other flags
+    except Exception:
+        return False
+
+
 KILL_FILES = ("KILL", "KILL.txt")  # KILL.txt too: Notepad and right-click > New add ".txt" and Windows hides it
 
 
@@ -753,7 +769,32 @@ def guard(broker, risk, cfg):
         if age is not None and age < 30:  # it updated the lock again: it's really running
             log("!! another Guardian window is already running — close this one (two would fight over the stops)")
             return
-    warned, first_pass, last_beat = False, True, 0.0
+    if console_no_quickedit():
+        log("QuickEdit is off for this window: clicking or selecting text can no longer pause the Guardian")
+    state_path = os.path.join(LOG_DIR, f"guard-state-{today:%Y-%m-%d}.json")
+    try:  # what the last Guardian window left today: its stop orders, so a restart picks them up
+        with open(state_path) as f:
+            saved = json.load(f)
+    except (OSError, ValueError):
+        saved = {}
+    saved_pos, last_saved = saved.get("pos", {}), None
+
+    def save_state():
+        nonlocal last_saved
+        data = json.dumps({"pos": {o: {"oid": t["oid"], "stop": t["stop"], "peak": t["peak"], "entry": t["entry"],
+                                       "qty": t["qty"], "per_contract": t.get("per_contract", False)}
+                                   for o, t in tracked.items() if not t.get("closed") and t.get("oid")}})
+        if data == last_saved:
+            return
+        try:
+            with open(state_path + ".tmp", "w") as f:
+                f.write(data)
+            os.replace(state_path + ".tmp", state_path)
+            last_saved = data
+        except OSError:
+            pass
+
+    warned, first_pass, last_beat, last_top = False, True, 0.0, 0.0
     test_pending = bool(g["startup_test"] and getattr(broker, "live", False))
     if test_pending:
         log("order test: runs once the market is open (8:30 CT) — a $0.01 buy that cannot fill, then cancelled")
@@ -844,11 +885,13 @@ def guard(broker, risk, cfg):
     def exit_now(occ, t, why):
         px = cancel_stop(t)
         if px is None:
+            t0 = now_ct().timestamp()
             try:
                 px = sell_now(broker, occ, t["qty"], cfg["poll_seconds"], t.get("last_bid") or 0)
             except Exception as e:
                 log(f"sell failed: {short_err(e)}")
                 px = None
+            day["busy"] = day.get("busy", 0.0) + now_ct().timestamp() - t0
             px = None if px is None else fill_px(px, t)
         if px is None:
             t["exit"] = why  # keep the position tracked and try again next pass
@@ -865,6 +908,11 @@ def guard(broker, risk, cfg):
         now = now_ct()
         if now.time() >= hm(g["end_time_ct"]):
             break
+        gap = now.timestamp() - last_top - day.get("busy", 0.0) - cfg["poll_seconds"] if last_top else 0.0
+        if gap > 40:  # a check takes seconds; minutes means Windows paused the program
+            log(f"!! GUARD was paused for {gap / 60:.1f} min (text selected in this window, or the PC slept) "
+                f"— catching up now. Stop orders already at Webull kept working.")
+        last_top, day["busy"] = now.timestamp(), 0.0
         try:
             with open(lock, "w") as f:
                 f.write(str(now.timestamp()))
@@ -881,8 +929,9 @@ def guard(broker, risk, cfg):
                         "your stops itself if Webull rejects them.")
             try:
                 pos, pos_ok = broker.option_positions(), True
-                if day.get("per_contract"):  # Webull reports cost per contract: convert to per share
-                    pos = {o: dict(p, cost=p["cost"] / 100) for o, p in pos.items()}
+                # positions where Webull reported cost per contract: convert to per share
+                pos = {o: dict(p, cost=p["cost"] / 100) if tracked.get(o, {}).get("per_contract") else p
+                       for o, p in pos.items()}
                 if day.get("pos_err"):
                     day["pos_err"] = False
                     log("positions readable again")
@@ -922,7 +971,10 @@ def guard(broker, risk, cfg):
                     if p["cost"] == t["entry"] and t["lingers"] < 3:
                         continue  # probably lag: give Webull a few seconds
                     del tracked[occ]  # bought again: guard it as a new trade
+                    pos_pc = t.get("per_contract")
                     t = None
+                else:
+                    pos_pc = False
                 if t:
                     if t["qty"] != p["qty"]:
                         log(f"{occ}: quantity changed {t['qty']} -> {p['qty']}, resetting the stop")
@@ -934,8 +986,20 @@ def guard(broker, risk, cfg):
                     continue
                 entry = p["cost"]
                 t = tracked[occ] = {"qty": p["qty"], "entry": entry, "peak": entry, "stop": 0.0, "oid": None,
-                                    "soft": False, "below": 0, "startup": first_pass}
+                                    "soft": False, "below": 0, "startup": first_pass, "per_contract": pos_pc}
                 t["stop"] = guard_stop(t, g)
+                s_ = saved_pos.get(occ) if first_pass else None
+                if s_ and s_.get("qty") == p["qty"]:
+                    try:
+                        st_, _, _ = broker.order_status(s_["oid"])
+                    except Exception:
+                        st_ = ""
+                    if st_ and not filled(st_) and st_ not in done_states:  # its stop is still working: keep it
+                        t.update(oid=s_["oid"], stop=s_["stop"], entry=s_["entry"], peak=max(s_["entry"], s_["peak"]),
+                                 per_contract=s_.get("per_contract", False), placed=True, seen=True)
+                        entry = t["entry"]
+                        log(f"{occ}: picked up the stop the last Guardian window left at Webull — stop "
+                            f"{t['stop']:.2f}, best price {t['peak']:.2f}; trailing continues")
                 log(f"{'FOUND' if first_pass else 'NEW'} POSITION {occ} x{p['qty']} @ {entry:.2f} — max loss at "
                     f"the stop ${(entry - t['stop']) * 100 * p['qty']:.2f} ({1 - t['stop'] / entry:.0%})")
                 if not first_pass:
@@ -996,7 +1060,7 @@ def guard(broker, risk, cfg):
                 # Webull's cost should be per share (0.56); 20x the bid means it came per contract (56)
                 if bid is not None and not t.get("seen") and t["entry"] > 20 * bid:
                     cancel_stop(t)
-                    day["per_contract"] = True  # every later read gets converted too
+                    t["per_contract"] = True  # later reads of this position get converted too
                     t.update(entry=t["entry"] / 100, peak=t["peak"] / 100, stop=0.0)
                     t["stop"] = guard_stop(t, g)
                     log(f"!! {occ}: cost looked like a per-contract price — using entry {t['entry']:.2f}, "
@@ -1045,6 +1109,7 @@ def guard(broker, risk, cfg):
                     parse_occ(o)[1] == now.date() for o in live):
                 warned = True
                 log(f"!! same-day options will be closed at {flat_txt} CT")
+            save_state()
             if now.timestamp() - last_beat >= 300:
                 last_beat = now.timestamp()
                 what = ", ".join(f"{o} stop {tracked[o]['stop']:.2f}{'' if tracked[o].get('oid') else ' (watching)'}"
