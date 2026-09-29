@@ -293,6 +293,24 @@ check("28b restart with a per-contract cost keeps the right entry and stop",
       any("picked up the stop" in l for l in L) and any("FOUND POSITION" in l and "@ 0.56" in l for l in L)
       and [o["stop"] for o in F28b.resting()] == before and 0.56 < before[0] < 1.07)
 
+# risk cap grows with the account: the larger of $20 and 3% of the account
+class Acct(Fake):
+    acct = "2000.00"
+    def balance(self):
+        if self.acct is None: raise RuntimeError("HTTP 503 (simulated)")
+        return {"total_net_liquidation_value": self.acct}
+F29 = Acct([3.00] * 30, cost=3.00); L = run(F29)
+check("29 $2,000 account: a $3.00 contract risks $60 (3%), stop 2.40",
+      [o["stop"] for o in F29.resting()] == [2.40] and any("max loss at the stop $60.00" in l for l in L)
+      and any("up to $60 per trade" in l for l in L))
+F29b = Acct([3.00] * 30, cost=3.00); F29b.acct = "160.00"; L = run(F29b)
+check("29b $160 account: the cap stays $20, stop 2.80, and it says what fits",
+      [o["stop"] for o in F29b.resting()] == [2.80] and any("fits up to $0.67 a contract" in l for l in L))
+F29c = Acct([3.00] * 30, cost=3.00); F29c.acct = None; L = run(F29c)
+check("29c balance unreadable: falls back to the $20 cap", [o["stop"] for o in F29c.resting()] == [2.80])
+F29d = Acct([0.50] * 30, cost=0.50); L = run(F29d)
+check("29d $2,000 account, $0.50 contract: still 30% under entry ($15)", [o["stop"] for o in F29d.resting()] == [0.35])
+
 # early close day (day after Thanksgiving): same-day options out at 11:50 CT
 OCC_SAVE = OCC
 OCC = "QQQ261127C00744000"

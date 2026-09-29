@@ -661,7 +661,8 @@ def auto(broker, risk, cfg):
 GUARD_DEFAULTS = {
     "risk_pct": 0.30,                 # first stop: aim 30% under the entry...
     "risk_min": 10,                   # ...but risk at least $10 per trade (all contracts together)
-    "risk_max": 20,                   # ...and never more than $20
+    "risk_max": 20,                   # ...and never more than $20, or account_risk_pct of the account if that's more
+    "account_risk_pct": 0.03,         # bigger account, bigger cap: $1,000 -> up to $30 a trade; 0 = always $20
     "stop_pct": 0.35,                 # used only when risk_pct is set to 0
     "ladder": [[0.40, 0.00], [0.80, 0.30], [1.50, 0.90]],  # [peak gain reached, gain locked by the stop]
     "trail_after": 1.50,              # above +150%, also trail...
@@ -718,7 +719,7 @@ def guard_stop(t, g):
     gain = t["peak"] / t["entry"] - 1
     if g.get("risk_pct"):
         cost = t["entry"] * 100 * t["qty"]
-        risk = min(g["risk_max"], max(g["risk_min"], g["risk_pct"] * cost))
+        risk = min(t.get("risk_cap") or g["risk_max"], max(g["risk_min"], g["risk_pct"] * cost))
         stop = max(0.05, t["entry"] - risk / (100 * t["qty"]))
     else:
         stop = t["entry"] * (1 - g["stop_pct"])
@@ -730,10 +731,17 @@ def guard_stop(t, g):
     return max(t["stop"], r2(stop))
 
 
+def risk_cap(acct, g):
+    """Most a first stop may risk on one trade: risk_max, or account_risk_pct of the account if that's more."""
+    return r2(max(g["risk_max"], (acct or 0) * g.get("account_risk_pct", 0)))
+
+
 def guard(broker, risk, cfg):
     """Protect every long option position in the account: stop order right away, ratchet it up, flatten
     same-day options at flatten time. Entries stay manual."""
     g = {**GUARD_DEFAULTS, **cfg.get("guard", {})}
+    if g.get("account_risk_pct", 0) >= 1:  # written as 3 meaning 3%
+        g["account_risk_pct"] /= 100
     flatten = hm(cfg["risk"]["flatten_time_ct"])
     done_states = ("CANCELLED", "CANCELED", "REJECTED", "FAILED", "EXPIRED")
     tracked, day = {}, {"realized": 0.0, "losses": 0, "closed": 0, "opened": 0}
@@ -782,7 +790,8 @@ def guard(broker, risk, cfg):
     def save_state():
         nonlocal last_saved
         data = json.dumps({"pos": {o: {"oid": t["oid"], "stop": t["stop"], "peak": t["peak"], "entry": t["entry"],
-                                       "qty": t["qty"], "per_contract": t.get("per_contract", False)}
+                                       "qty": t["qty"], "per_contract": t.get("per_contract", False),
+                                       "risk_cap": t.get("risk_cap")}
                                    for o, t in tracked.items() if not t.get("closed") and t.get("oid")}})
         if data == last_saved:
             return
@@ -798,8 +807,17 @@ def guard(broker, risk, cfg):
     test_pending = bool(g["startup_test"] and getattr(broker, "live", False))
     if test_pending:
         log("order test: runs once the market is open (8:30 CT) — a $0.01 buy that cannot fill, then cancelled")
-    first = (f"first stop {g['risk_pct']:.0%} under entry, risk ${g['risk_min']}-${g['risk_max']} per trade"
-             if g.get("risk_pct") else f"stop -{g['stop_pct']:.0%}")
+    first = f"stop -{g['stop_pct']:.0%}"
+    if g.get("risk_pct"):
+        first = f"first stop {g['risk_pct']:.0%} under entry, risk ${g['risk_min']}-${g['risk_max']} per trade"
+        if g.get("account_risk_pct"):
+            try:
+                acct = float(find(broker.balance(), "net_liquidation_value", "total_net_liquidation_value") or 0)
+            except Exception:
+                acct = 0
+            first = (f"first stop {g['risk_pct']:.0%} under entry, risk ${g['risk_min']} up to "
+                     f"${risk_cap(acct, g):g} per trade (the larger of ${g['risk_max']} and "
+                     f"{g['account_risk_pct']:.0%} of the account{f' ${acct:,.2f}' if acct else ''})")
     log(f"GUARD on: {first}, ladder {g['ladder']}, trail {g['trail_pct']:.0%} after "
         f"+{g['trail_after']:.0%}, same-day options closed at {flat_txt} CT, "
         f"lockout {'ON' if g['lockout'] else 'off'}")
@@ -985,8 +1003,13 @@ def guard(broker, risk, cfg):
                 if p["cost"] <= 0:
                     continue
                 entry = p["cost"]
+                try:
+                    acct = float(find(broker.balance(), "net_liquidation_value", "total_net_liquidation_value") or 0)
+                except Exception:
+                    acct = 0  # balance unreadable: the cap stays at risk_max
                 t = tracked[occ] = {"qty": p["qty"], "entry": entry, "peak": entry, "stop": 0.0, "oid": None,
-                                    "soft": False, "below": 0, "startup": first_pass, "per_contract": pos_pc}
+                                    "soft": False, "below": 0, "startup": first_pass, "per_contract": pos_pc,
+                                    "risk_cap": risk_cap(acct, g) if g.get("risk_pct") else None}
                 t["stop"] = guard_stop(t, g)
                 s_ = saved_pos.get(occ) if first_pass else None
                 if s_ and s_.get("qty") == p["qty"]:
@@ -996,7 +1019,8 @@ def guard(broker, risk, cfg):
                         st_ = ""
                     if st_ and not filled(st_) and st_ not in done_states:  # its stop is still working: keep it
                         t.update(oid=s_["oid"], stop=s_["stop"], entry=s_["entry"], peak=max(s_["entry"], s_["peak"]),
-                                 per_contract=s_.get("per_contract", False), placed=True, seen=True)
+                                 per_contract=s_.get("per_contract", False), placed=True, seen=True,
+                                 risk_cap=s_.get("risk_cap") or t["risk_cap"])
                         entry = t["entry"]
                         log(f"{occ}: picked up the stop the last Guardian window left at Webull — stop "
                             f"{t['stop']:.2f}, best price {t['peak']:.2f}; trailing continues")
@@ -1009,18 +1033,16 @@ def guard(broker, risk, cfg):
                             log(f"!! {w}")
                 if t["stop"] > entry * 0.8:
                     log(f"!! stop is only {1 - t['stop'] / entry:.0%} under the entry — normal wiggles may hit it; "
-                        f"a cheaper contract or fewer contracts gives it more room")
+                        f"a cheaper contract or fewer contracts gives it more room"
+                        + (f" (your ${t['risk_cap']:g} risk cap fits up to ${t['risk_cap'] / (g['risk_pct'] * 100):.2f} "
+                           f"a contract for a {g['risk_pct']:.0%} stop)" if t.get("risk_cap") else ""))
                 if not first_pass and g["lockout"] and (day["losses"] >= g["lockout_losses"]
                                                         or -day["realized"] >= g["lockout_loss"]):
                     log("LOCKOUT: daily limit reached — selling the new position")
                     t["exit"] = "lockout"
-                try:
-                    acct = float(find(broker.balance(), "net_liquidation_value", "total_net_liquidation_value") or 0)
-                    if acct and entry * 100 * p["qty"] > g["size_alert_pct"] * acct:
-                        log(f"!! SIZE: this trade is ${entry * 100 * p['qty']:.0f} = "
-                            f"{entry * 100 * p['qty'] / acct:.0%} of the account (limit {g['size_alert_pct']:.0%})")
-                except Exception:
-                    pass
+                if acct and entry * 100 * p["qty"] > g["size_alert_pct"] * acct:
+                    log(f"!! SIZE: this trade is ${entry * 100 * p['qty']:.0f} = "
+                        f"{entry * 100 * p['qty'] / acct:.0%} of the account (limit {g['size_alert_pct']:.0%})")
             if pos_ok:
                 first_pass = False
 

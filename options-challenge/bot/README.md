@@ -53,8 +53,19 @@ python bot.py --live guard      # real stop orders
 python bot.py guard             # dry run: reads your real positions, only simulates the orders
 ```
 - Any option you buy gets a real **stop-limit sell order in Webull within ~5 seconds**, placed so the trade
-  sits **30% under your entry**, with the loss kept between **$10 and $20** per trade (`risk_pct`, `risk_min`,
-  `risk_max`). Contracts above ~$0.67 hit the $20 cap, so their stop gets tighter; the log warns under 20% room.
+  sits **30% under your entry**, with the loss kept between **$10** and a **cap** per trade (`risk_pct`, `risk_min`).
+  The cap is **$20 or 3% of your account, whichever is bigger** (`risk_max`, `account_risk_pct`), read from
+  Webull on every new trade:
+
+  | Account | Cap | Biggest contract that still gets a full 30% stop |
+  |---|---|---|
+  | up to $667 | $20 | $0.67 |
+  | $1,000 | $30 | $1.00 |
+  | $2,000 | $60 | $2.00 |
+  | $5,000 | $150 | $5.00 |
+
+  A pricier contract hits the cap, so its stop gets tighter; the log warns under 20% room and says what fits.
+  For 2% use `"account_risk_pct": 0.02`; for a fixed $20 cap use `0`. If Webull's balance can't be read, the cap is $20.
   It stays at Webull even if your PC shuts off.
 - The stop only moves up: **breakeven at +40%**, **locks +30% at +80%**, **locks +90% at +150%**, then trails
   **25% under the highest bid**.
@@ -75,7 +86,7 @@ python bot.py guard             # dry run: reads your real positions, only simul
 
 Change any of these by adding a `"guard"` block to `config.json`, for example:
 ```json
-"guard": { "risk_pct": 0.30, "risk_min": 10, "risk_max": 20, "warn_loss": 20 }
+"guard": { "risk_pct": 0.30, "risk_min": 10, "risk_max": 20, "account_risk_pct": 0.03, "warn_loss": 20 }
 ```
 - Run **only one** of `guard`, `auto`, `buy`, `watch --auto` or `manage` at a time: they each place their own
   exit orders and would fight over the same contracts.
