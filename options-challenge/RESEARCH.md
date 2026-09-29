@@ -146,3 +146,124 @@ profile: POC/VAH/VAL within $0.07). SPY, QQQ, IWM, 723 symbol-days, same option 
 
 **Conclusion: prior-day volume profile levels do not give a same-day option edge in this data.** Together with
 Parts 1 and 4, no rule-based same-day option-buying strategy has held up in both periods.
+
+## Part 6 — September 2026 review: what worked this month (2026-09-29)
+
+Data: SPY / QQQ / IWM 5-minute bars through 2026-09-29 (19 trading days in September). Daily bars for
+09-24 to 09-29 were built from the 5-minute bars; the closes match Webull's.
+Scripts: `research/study11_september.py` (regime and 11 strategies), `research/study11b_detail.py` (month by month).
+Every rule is tested on September **and** on the 11 months before it (Oct 2025 – Aug 2026). A rule that only
+works in one month of ~19 days is most likely luck.
+
+### The month's market
+
+| | SPY | QQQ | IWM |
+|---|---|---|---|
+| Aug 31 → Sep 29 | −0.1% | **+3.1%** | **−4.8%** |
+| September range | 747.74 – 775.14 | 699.27 – 748.35 | 277.41 – 295.41 |
+
+| Month (all 3 ETFs) | Avg day range | Up days | First 15-min direction held to close | Day's high/low set in first 30 min | VWAP crosses per day |
+|---|---|---|---|---|---|
+| Apr | 1.22% | 68% | 63% | 67% | 6.4 |
+| May | 1.16% | 60% | 68% | 60% | 6.2 |
+| Jun | 1.74% | 48% | 62% | 62% | 7.1 |
+| Jul | 1.32% | 47% | 71% | 58% | 6.0 |
+| Aug | 0.89% | 38% | 75% | 63% | 7.5 |
+| **Sep** | **0.93%** | **39%** | **74%** | **61%** | **6.8** |
+
+- Small days: the average range has been under 1% for two months, vs 1.2–1.7% in the spring. Cheap same-day
+  options need a big move, and there have been few.
+- More down days than up days, with tech (QQQ) and small caps (IWM) going opposite ways.
+- The opening direction held to the close on about 3 of 4 days, but price still crossed VWAP ~7 times a day,
+  so the path was choppy even when the direction was right.
+
+### 11 intraday rules, same-day $0.50 option, Guardian exits
+
+$/trade per 1 contract (IV ×1.15). "Und bps" is the underlying's move in the trade direction from entry to
+14:50 CT (0.01% = 1 bp); it measures the signal alone, before any option cost.
+
+| Rule | Sep n | Sep $/trade | Sep und bps | Prior n | Prior $/trade | Months positive (of 12) |
+|---|---|---|---|---|---|---|
+| Gap and go (gap > 0.3%, first 15 min confirms) | 14 | **+6.17** | +34 | 204 | −8.01 | 3 |
+| Power hour break (14:00 CT) | 12 | −0.45 | −2 | 184 | −8.22 | 0 |
+| RSI(14) 5-min extreme reversal | 20 | −1.09 | −8 | 209 | −9.15 | 0 |
+| ORB 15-min breakout | 54 | −2.52 | +3 | 661 | −7.41 | 0 |
+| Prior-day value plan (the 09-29 plan) | 56 | −3.23 | +8 | 646 | −8.62 | 0 |
+| Trend day at 10:30 CT | 24 | −6.48 | +1 | 318 | −6.55 | 1 |
+| ORB failed breakout (fade) | 25 | −7.00 | −1 | 315 | −7.29 | 1 |
+| VWAP pullback in trend | 36 | −8.36 | −5 | 412 | −6.34 | 1 |
+| EMA 9/21 cross + VWAP | 37 | −8.61 | −10 | 480 | −7.70 | 0 |
+| Gap fade | 32 | −11.25 | −6 | 413 | −6.19 | 1 |
+| Back into value → POC | 6 | −13.26 | −22 | 111 | −3.07 | 3 |
+
+**One day made September's best numbers.** On 09-21 SPY and QQQ trended all day and gap-and-go and the ORB
+breakout each made about +$81 per contract. Without 09-21, gap and go falls from +$6.17 to **−$6.52** per trade,
+ORB from −$2.52 to −$5.73, and the value plan from −$3.23 to −$6.28.
+
+**What the month says about indicators (underlying move, no option costs):**
+- *Going with the move* (gap and go, ORB, value-area breakouts) was slightly right in September: +3 to +34 bps.
+- *Fading the move* (gap fade, failed-breakout fade, back into value, RSI(14) extremes, VWAP pullbacks, EMA
+  crosses) was wrong: −1 to −22 bps.
+- Neither side was big enough to pay for a same-day option.
+
+**Why the options lose even when the direction is right:** across all 4,269 simulated trades, the underlying
+was in the trade's favour at 14:50 on 51% of them (a coin flip), and **85% of those right-direction trades
+still lost money**: a normal dip hit the stop first, or time decay ate the option before the move came.
+
+### Sensitivity (September / prior $/trade)
+
+| Setting | ORB breakout | Value plan | Gap and go |
+|---|---|---|---|
+| Base: $0.50 same-day, IV ×1.15 | −2.52 / −7.41 | −3.23 / −8.62 | +6.17 / −8.01 |
+| Cheaper model IV (×1.0) | +0.52 / −5.65 | +0.25 / −7.35 | +10.51 / −6.19 |
+| $3.00 same-day (near the money) | +15.58 / −16.52 | +13.52 / −15.52 | +89.42 / −10.60 |
+| $3.00, expires next day | −12.67 / −21.64 | −8.96 / −22.71 | +24.69 / −21.31 |
+| $6.00, 5 days to expiry | −28.90 / −31.62 | −28.63 / −32.97 | −15.20 / −32.26 |
+
+No setting is positive in both periods. Near-the-money contracts turn September green, but they lose about
+twice as much per trade in the prior 11 months. Longer expiries lose more because the Guardian's $10–$20 stop
+is tight for a $300–$600 contract.
+
+### Your own trades (journal, 09-24 to 09-28, 30 trades)
+
+| | Trades | Total | $/trade |
+|---|---|---|---|
+| Followed the rules / Guardian managed the exit | 5 | +$70.40 | +$14.08 |
+| Partly followed | 10 | +$89.73 | +$8.97 |
+| Broke the rules (no trigger, over the max, against the trend) | 15 | **−$133.92** | −$8.93 |
+
+- 8 wins averaging +$27.88; 22 losses averaging −$8.95. The two best trades (+$117.88 and +$38.88) made
+  the whole result; the other 28 trades lost **−$130.55** together.
+- Every big winner came from a strong one-way move (09-25 open and 11:00 breakout, 09-28 10:48 and 11:24 calls) held
+  until a trailing stop took it out. Hand exits within 1–2 minutes and trades 3+ of the day were where the
+  money went.
+
+### Multi-day RSI(2) (Part 2) in September — still the only rule that held up
+
+Signal: RSI(2) < 10 with the price above its 200-day average; exit when the close is above the 5-day average
+(max 5 days). Underlying return per trade:
+
+| Entry | SPY | QQQ | IWM |
+|---|---|---|---|
+| 09-01 | +1.50% (2 days) | — | — |
+| 09-10 | +0.85% (1 day) | +1.16% (5 days) | −0.53% (5 days) |
+
+3 of 4 won in September; 11 of 14 won from June to September. **As of the 09-29 close, IWM is on a signal**
+(RSI(2) 6.4, close 279.07 vs 200-day 274.71). SPY is close (RSI(2) 21.5). Part 2's backtest used the bull put
+credit spread, which needs Options Level 3 and $2,000 of equity on Webull; Part 3 showed that buying calls on
+this signal did not hold up in 2022–24.
+
+### Conclusions for the restart
+
+1. **No same-day option rule beat costs over the last 12 months**, including this month once 09-21 is removed.
+   That matches Parts 1, 4 and 5. Treat 0DTE as a small, capped side bet, not the plan.
+2. **In this market, trade with the move, never against it.** Continuation signals were right in September;
+   fades were wrong. If you trade 0DTE: a gap-and-go or opening-range break in the first hour, in the trigger
+   direction only.
+3. **Let the Guardian hold the winners.** Your profit came from 2 trades held with a trailing stop; hand exits
+   and extra trades gave it back. Keep the max of 2 trades a day and the lockout.
+4. **Size by risk, not by account.** With a bigger account, keep each trade's stop loss at ≤ 2–5% of the balance
+   (e.g. $1,000 → $20–$50 risk). Near-the-money contracts need a wider stop than the default $10–$20 clamp.
+5. **The one edge that held across four years is multi-day RSI(2) with a put credit spread.** With $2,000+ and
+   Options Level 3, that is the setup to trade (≤ 10% risk per spread, see Part 2). It fires ~2–3 times a month.
+6. **Limits:** 19 days is a small sample; option prices are modelled, not real quotes; real fills are worse.
