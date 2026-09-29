@@ -267,3 +267,57 @@ this signal did not hold up in 2022–24.
 5. **The one edge that held across four years is multi-day RSI(2) with a put credit spread.** With $2,000+ and
    Options Level 3, that is the setup to trade (≤ 10% risk per spread, see Part 2). It fires ~2–3 times a month.
 6. **Limits:** 19 days is a small sample; option prices are modelled, not real quotes; real fills are worse.
+
+## Part 7 — Clint Awana's opening-range method, from his video (2026-09-29)
+
+Source: "How to Trade the Opening Range", Clint Awana (@ClintOptions), YouTube, 2026-09-28, 44 min (the user
+pasted the transcript). Script: `research/study12_clint_orb.py`.
+
+### Notes: his method
+- **Range:** high and low of the first 15 minutes, 9:30–9:45 ET (8:30–8:45 CT), on SPY and QQQ. The midpoint is
+  usually near the open. Sit on your hands for those 15 minutes; most blown accounts come from FOMO trades in the
+  first 5–10 minutes.
+- **Range size matters:** compare it with the stock's normal daily range. Narrow ranges break more often and run
+  further; a wide range (his example: 0.4% on SPY) rarely gives a clean break. Skip days with an oversized range.
+- **Chart:** opening-range high/low, premarket high/low, standard (floor) pivots, VWAP, volume, RSI.
+  Optional: ES/NQ futures levels, Mag-7 names (MSFT, TSLA, META, NVDA…) to confirm direction.
+- **Entry:** a 5-minute candle **closes** outside the range, with **rising volume**, and **RSI trending the same
+  way but not stretched** (not above 70 for calls or below 30 for puts). He wants **SPY and QQQ breaking the
+  same way at the same time**. Flat VWAP/RSI/MACD or no volume = no pressure = skip.
+- **Targets:** the next standard pivot, or the premarket high/low. Trim 20–30% of the position, then around 50%,
+  leave a runner by +80%, but **never let a runner go red**. Take the first move and get out; don't hold all day.
+- **Inside the range = no-man's land:** no trades. 0DTE calls and puts both bleed in the chop, faster later in the
+  day. A pivot inside the range acts as a magnet on choppy days.
+- **Retests** of the range edge after a break: possible, but under 50% in his experience. The first break is better.
+- **Chasing** a break late is OK only if volume keeps coming, RSI still points the way, and there is room to the
+  next pivot or premarket level.
+- **Avoid:** monthly OPEX Fridays and FOMC days (price pins inside the range), CPI/PPI and 10 a.m. data days
+  (oversized ranges), be careful on Mondays (weekend gaps).
+- **His claim:** with every condition met it works "nine times out of 10".
+
+### Backtest of his rules (SPY + QQQ, Oct 2025 – Sep 2026, same-day option)
+Coded: range 9:30–9:45 ET; first 5-min close outside it before 11:30 ET; filters for volume (breakout candle above
+the previous candle and above its 20-day average), RSI(14) (calls 50–70 and rising, puts 30–50 and falling),
+SPY/QQQ agreement, narrow range (below the prior 10 days' median), no OPEX/FOMC days. His exit: next floor pivot
+= take profit, a close back inside the range = out, otherwise out by 11:30 ET. Not coded: premarket levels (no
+premarket bars in the data), Mag-7 check, trims/runners.
+
+$/trade for 1 contract (IV ×1.15). "His $" = his exit; "Guardian $" = the Trade Guardian's trailing exits.
+
+| Rules used | Period | Trades | Win | Und bps | His $ | Guardian $ |
+|---|---|---|---|---|---|---|
+| Plain break, $0.50 | Sep / prior | 37 / 425 | 30% / 29% | +4 / +0 | −0.39 / −5.46 | +1.34 / −7.88 |
+| + volume | Sep / prior | 12 / 154 | 42% / 33% | +8 / +1 | +4.09 / −5.18 | +4.20 / −6.97 |
+| + RSI | Sep / prior | 5 / 173 | 20% / 34% | +2 / +0 | −0.51 / −3.59 | +1.38 / −7.94 |
+| volume + RSI | Sep / prior | 1 / 57 | — / 39% | — / +2 | — / −2.57 | — / −8.57 |
+| **All his rules, $0.50** | prior (none in Sep) | 14 | 43% | +5 | −0.22 | −11.52 |
+| All his rules, $1.00 | prior | 14 | 43% | +5 | +2.50 | −17.89 |
+| All his rules, $2.00 | prior | 14 | 43% | +5 | +5.33 | −24.67 |
+
+- **His filters help.** Volume and RSI cut the loss from −$5.46 to about −$2.60 per trade; with every rule it is
+  about breakeven with a $0.50 contract and slightly positive with $1–2 contracts.
+- **But all rules together fired only 14 times in 11 months** (none in September), and won **43%**, not 9 in 10.
+  Positive Nov–Feb, negative every month it traded from April to August. 14 trades cannot prove an edge.
+- **His exit beats the Guardian's for this setup** (take profit at the pivot, get out if the range fails):
+  the Guardian's hold-and-trail gives the morning move back by the afternoon.
+- The underlying move is small (+0 to +8 bps on average), so the option cost still decides most of the result.
