@@ -120,3 +120,80 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def filtered(min_bps=10, start="08:00", need_vol=True, need_rsi=True, modes=("push",)):
+    """Late, large premarket FVG + the opening-range checks (volume, RSI zone) on the entry candle."""
+    rows = []
+    for sym in SYMS:
+        pre = pd.read_csv(os.path.join(D, f"{sym}_PRE_M15.csv"), parse_dates=["time_et"])
+        pre["date"] = pre.time_et.dt.normalize()
+        bydate = {k: g for k, g in pre.groupby("date")}
+        days = sorted(lab.universe([sym]), key=lambda x: x.date)
+        for prev, d in zip(days[:-1], days[1:]):
+            g = bydate.get(d.date)
+            if g is None or len(g) < 6:
+                continue
+            fs = [f for f in fvgs(g) if f[3].strftime("%H:%M") >= start and (f[2] - f[1]) / d.o[0] * 1e4 >= min_bps]
+            if not fs:
+                continue
+            f = max(fs, key=lambda x: x[2] - x[1])
+            zone = (f[1], f[2])
+            r = S.rsi(np.concatenate([prev.c, d.c]))[len(prev.c):]
+            for mode in modes:
+                s = signal(d, zone, mode)
+                if not s:
+                    continue
+                i, kind, how = s
+                up = kind == "C"
+                vol_ok = d.v[i] > d.avgvol20[i] and (i == 0 or d.v[i] > d.v[i - 1])
+                rsi_ok = (50 < r[i] < 70 and r[i] > r[i - 1]) if up else (30 < r[i] < 50 and r[i] < r[i - 1])
+                if (need_vol and not vol_ok) or (need_rsi and not rsi_ok):
+                    continue
+                q = quick_exit(d, i, kind, zone)
+                g_ = S.trade(d, i, kind)
+                if q is None or g_ is None:
+                    continue
+                j = min(i + 12, 77)
+                rows.append(dict(sym=sym, date=d.date, mode=mode, kind=kind, i=i, q=q, g=g_, zlo=zone[0], zhi=zone[1],
+                                 ftime=f[3], f1h=(d.c[j] / d.c[i] - 1) * (1 if up else -1) * 1e4))
+    return pd.DataFrame(rows)
+
+
+def bias(entry="first", agree_type=True):
+    """Bias version: where the 9:30 open sits vs the latest premarket FVG sets the direction.
+    entry=first -> trade at the first 5-min close; entry=orb -> wait for an opening-range break in that direction."""
+    rows = []
+    for sym in SYMS:
+        pre = pd.read_csv(os.path.join(D, f"{sym}_PRE_M15.csv"), parse_dates=["time_et"])
+        pre["date"] = pre.time_et.dt.normalize()
+        bydate = {k: g for k, g in pre.groupby("date")}
+        for d in lab.universe([sym]):
+            g = bydate.get(d.date)
+            if g is None:
+                continue
+            fs = fvgs(g)
+            if not fs:
+                continue
+            t, lo, hi, _ = fs[-1]
+            if d.o[0] > hi and (t == "bull" or not agree_type):
+                kind = "C"
+            elif d.o[0] < lo and (t == "bear" or not agree_type):
+                kind = "P"
+            else:
+                continue
+            if entry == "first":
+                i = 0
+            else:
+                oh, ol = d.h[:3].max(), d.l[:3].min()
+                i = next((k for k in range(3, 24) if (d.c[k] > oh if kind == "C" else d.c[k] < ol)), None)
+                if i is None:
+                    continue
+            q = quick_exit(d, i, kind, (lo, hi))
+            g_ = S.trade(d, i, kind)
+            if q is None or g_ is None:
+                continue
+            j = min(i + 12, 77)
+            rows.append(dict(sym=sym, date=d.date, kind=kind, q=q, g=g_,
+                             f1h=(d.c[j] / d.c[i] - 1) * (1 if kind == "C" else -1) * 1e4))
+    return pd.DataFrame(rows)
