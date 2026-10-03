@@ -67,6 +67,13 @@ python bot.py guard             # dry run: reads your real positions, only simul
   A pricier contract hits the cap, so its stop gets tighter; the log warns under 20% room and says what fits.
   For 2% use `"account_risk_pct": 0.02`; for a fixed $20 cap use `0`. If Webull's balance can't be read, the cap is $20.
   It stays at Webull even if your PC shuts off.
+- **Take profit at +40%:** once the bid has been at least 40% over your entry on two checks in a row (about
+  10 seconds), the Guardian cancels its stop and sells at the bid. The log shows the target when you open a trade
+  (`take profit at 0.38 (+$11.20)`). If the sell doesn't fill, the stop goes back on and it tries again the next
+  time the bid is up there; it never chases the price down. Backtest (SPY/QQQ opening-range breaks that passed the
+  volume and RSI checks): −$6.50 a trade holding with the trail, −$1.85 selling at +40%. Change it with
+  `"take_profit_pct": 0.30` (or `0.50`); `0` turns it off and the trail below manages the whole trade.
+  A position already past +40% when the Guardian starts is sold too.
 - The stop only moves up: **breakeven at +40%**, **locks +30% at +80%**, **locks +90% at +150%**, then trails
   **25% under the highest bid**.
 - **Selling by hand:** Webull won't let you sell while the Guardian's stop holds the contracts. Either
@@ -86,7 +93,7 @@ python bot.py guard             # dry run: reads your real positions, only simul
 
 Change any of these by adding a `"guard"` block to `config.json`, for example:
 ```json
-"guard": { "risk_pct": 0.30, "risk_min": 10, "risk_max": 20, "account_risk_pct": 0.03, "warn_loss": 20 }
+"guard": { "risk_pct": 0.30, "risk_min": 10, "risk_max": 20, "account_risk_pct": 0.03, "take_profit_pct": 0.40, "warn_loss": 20 }
 ```
 - Run **only one** of `guard`, `auto`, `buy`, `watch --auto` or `manage` at a time: they each place their own
   exit orders and would fight over the same contracts.

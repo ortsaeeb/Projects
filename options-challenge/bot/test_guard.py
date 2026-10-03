@@ -50,12 +50,12 @@ class Fake:
         return o["status"], (o["qty"] if o["status"] == "FILLED" else 0), (0 if self.zero_px else o["px"])
     def resting(self): return [o for o in self.orders.values() if o["status"] == "SUBMITTED"]
 
-def run(F_, start="10:50", end="10:58", day=(2026, 9, 28)):
+def run(F_, start="10:50", end="10:58", day=(2026, 9, 28), guard=None):
     global F; F = F_
     clock[0] = datetime(*day, *map(int, start.split(":")), tzinfo=bot.CT)
     cfg = {"risk": {"max_cost_per_trade": 50, "max_trades_per_day": 2, "max_daily_loss": 40,
                     "take_profit_pct": 0.8, "stop_loss_pct": 0.35, "flatten_time_ct": "14:50"},
-           "poll_seconds": 5, "guard": {"end_time_ct": end}}
+           "poll_seconds": 5, "guard": {"end_time_ct": end, "take_profit_pct": 0, **(guard or {})}}
     lines = []
     orig = bot.log
     bot.log = lambda m: (lines.append(m), orig(m))
@@ -310,6 +310,24 @@ F29c = Acct([3.00] * 30, cost=3.00); F29c.acct = None; L = run(F29c)
 check("29c balance unreadable: falls back to the $20 cap", [o["stop"] for o in F29c.resting()] == [2.80])
 F29d = Acct([0.50] * 30, cost=0.50); L = run(F29d)
 check("29d $2,000 account, $0.50 contract: still 30% under entry ($15)", [o["stop"] for o in F29d.resting()] == [0.35])
+
+# take profit: sell once the bid has held +40% for two checks; a one-tick spike doesn't count; no fill = stop back on
+TP = {"take_profit_pct": 0.40}
+F30 = Fake([0.56, 0.60, 0.70, 0.80, 0.81, 0.81, 0.81] + [0.81] * 20); L = run(F30, guard=TP)
+check("30 take profit: sold at +40% (0.80+) with profit", any("CLOSED" in l and "take profit +40%" in l and "P/L $+2" in l for l in L)
+      and F30.held == 0 and not F30.resting() and any("take profit at 0.78" in l for l in L))
+F30b = Fake([0.56, 0.60, 0.82, 0.60, 0.60] + [0.60] * 20); L = run(F30b, guard=TP)
+check("30b one-tick spike to +46% does not trigger take profit", not any("CLOSED" in l for l in L) and F30b.held == 1)
+class NoFill(Fake):
+    def place_option(self, occ, side, qty, limit, stop=None):
+        oid = super().place_option(occ, side, qty, limit, stop)
+        if side == "SELL" and stop is None: self.orders[oid]["limit"] = 99  # bid never reaches it
+        return oid
+F30c = NoFill([0.56, 0.60, 0.80, 0.81] + [0.81] * 20); L = run(F30c, end="10:53", guard=TP)
+check("30c take profit not filled: stop goes back on, position kept", any("not filled" in l for l in L)
+      and F30c.held == 1 and len(F30c.resting()) == 1 and F30c.resting()[0]["stop"] is not None)
+F30d = Fake([0.56, 0.60, 0.80, 0.81] + [0.81] * 20); L = run(F30d)
+check("30d take profit off (0): position held", not any("CLOSED" in l for l in L) and F30d.held == 1)
 
 # early close day (day after Thanksgiving): same-day options out at 11:50 CT
 OCC_SAVE = OCC

@@ -665,6 +665,7 @@ GUARD_DEFAULTS = {
     "account_risk_pct": 0.03,         # bigger account, bigger cap: $1,000 -> up to $30 a trade; 0 = always $20
     "stop_pct": 0.35,                 # used only when risk_pct is set to 0
     "ladder": [[0.40, 0.00], [0.80, 0.30], [1.50, 0.90]],  # [peak gain reached, gain locked by the stop]
+    "take_profit_pct": 0.40,          # sell when the bid is +40% over the entry (two checks in a row); 0 = off
     "trail_after": 1.50,              # above +150%, also trail...
     "trail_pct": 0.25,                # ...25% below the highest bid
     "limit_offset_pct": 0.10,         # stop-limit: limit this far under the stop so it fills in a fast drop
@@ -804,6 +805,7 @@ def guard(broker, risk, cfg):
             pass
 
     warned, first_pass, last_beat, last_top = False, True, 0.0, 0.0
+    tp_pct = float(g.get("take_profit_pct") or 0)
     test_pending = bool(g["startup_test"] and getattr(broker, "live", False))
     if test_pending:
         log("order test: runs once the market is open (8:30 CT) — a $0.01 buy that cannot fill, then cancelled")
@@ -820,7 +822,8 @@ def guard(broker, risk, cfg):
                      f"{g['account_risk_pct']:.0%} of the account{f' ${acct:,.2f}' if acct else ''})")
     log(f"GUARD on: {first}, ladder {g['ladder']}, trail {g['trail_pct']:.0%} after "
         f"+{g['trail_after']:.0%}, same-day options closed at {flat_txt} CT, "
-        f"lockout {'ON' if g['lockout'] else 'off'}")
+        f"lockout {'ON' if g['lockout'] else 'off'}, "
+        f"take profit {f'+{tp_pct:.0%}' if tp_pct else 'off'}")
 
     def filled(st):
         return "FILLED" in st and "PARTIAL" not in st
@@ -920,6 +923,31 @@ def guard(broker, risk, cfg):
             place_stop(occ, t)  # stay protected while retrying
             return
         close(occ, t, px, why)
+
+    def take_profit(occ, t):
+        """Sell at the bid once it has held +take_profit_pct for two checks. If it doesn't fill, the stop goes
+        back on and the guard tries again the next time the bid is up there (it never chases the price down)."""
+        got = cancel_stop(t)
+        if got is not None:
+            close(occ, t, got, "stop filled")
+            return
+        px = tick_down(occ, t["last_bid"])
+        t0, coid, sold = now_ct().timestamp(), None, None
+        try:
+            coid = broker.place_option(occ, "SELL", t["qty"], px)
+            sold = wait_fill(broker, coid, 10, cfg["poll_seconds"])
+            if sold is None:
+                broker.cancel(coid)
+                st, _, fpx = broker.order_status(coid)  # it may have filled while we cancelled
+                sold = fpx if filled(st) else None
+        except Exception as e:
+            log(f"take profit: {short_err(e)}")
+        day["busy"] = day.get("busy", 0.0) + now_ct().timestamp() - t0
+        if sold is not None:
+            close(occ, t, fill_px(sold, t), f"take profit +{tp_pct:.0%}")
+            return
+        log(f"take profit on {occ} not filled at {px:.2f} — stop back on, trying again if the bid gets back up")
+        place_stop(occ, t)
 
     errs = {"n": 0, "last": 0.0}
     while True:
@@ -1025,7 +1053,9 @@ def guard(broker, risk, cfg):
                         log(f"{occ}: picked up the stop the last Guardian window left at Webull — stop "
                             f"{t['stop']:.2f}, best price {t['peak']:.2f}; trailing continues")
                 log(f"{'FOUND' if first_pass else 'NEW'} POSITION {occ} x{p['qty']} @ {entry:.2f} — max loss at "
-                    f"the stop ${(entry - t['stop']) * 100 * p['qty']:.2f} ({1 - t['stop'] / entry:.0%})")
+                    f"the stop ${(entry - t['stop']) * 100 * p['qty']:.2f} ({1 - t['stop'] / entry:.0%})"
+                    + (f", take profit at {entry * (1 + tp_pct):.2f} "
+                       f"(+${entry * tp_pct * 100 * p['qty']:.2f})" if tp_pct else ""))
                 if not first_pass:
                     day["opened"] += 1
                     if g["warnings"]:
@@ -1109,6 +1139,11 @@ def guard(broker, risk, cfg):
                 # ratchet the stop up (never down); the peak only counts a bid seen on two checks in a row
                 confirmed = min(bid, t.get("prev_bid", bid))
                 t["prev_bid"] = bid
+                if tp_pct and t.get("prev_ok") and confirmed >= t["entry"] * (1 + tp_pct):
+                    take_profit(occ, t)
+                    if t.get("closed"):
+                        continue
+                t["prev_ok"] = True
                 if confirmed > t["peak"]:
                     t["peak"] = confirmed
                 new = min(guard_stop(t, g), r2(confirmed - 0.02))
