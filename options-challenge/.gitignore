@@ -6,3 +6,5 @@ bot/logs/
 bot/*.log
 bot/KILL
 bot/KILL.txt
+data/dukascopy/
+data/ext/
