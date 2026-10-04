@@ -352,7 +352,7 @@ doubles the edge, and without a sweep first the same MSS + FVG entry is exactly 
 | Test | 63 | 57% | +0.18 (1.8) | +21.78 | 37% |
 | $0.30 contract, all | 148 | | | +14.46 | 31% |
 
-- All three ETFs are positive in R and in option $. Both directions work, and so do 8 of the 12 months.
+- All three ETFs are positive in R and in option $. Both directions work, and 9 of the 12 months are positive (Jan, Apr and May lose).
 - **The 7 stocks do not confirm it** (−0.02R, −$5/trade), so treat it as an index-ETF effect at best.
 - **It is lumpy.** The median option trade is −$12.61; the average is positive because of winners that pay 3–10×
   (still +$10/trade without the best 3). At $0.30 contracts on all 3 ETFs: 69% of trades lose, the longest
