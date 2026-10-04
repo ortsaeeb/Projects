@@ -411,3 +411,47 @@ cheap pricing:
 | $0.60 contract | +$66, 55% win | +$100, 50% win |
 
 Still 19 SPY trades in 13 months: encouraging, not proven.
+
+## Part 10 — Every SPY/QQQ strategy re-run at market option prices (2026-10-04)
+
+**Correction to Parts 1 and 4–7.** lab.py priced same-day options at a median IV of 13.2% (SPY) and 19.3% (QQQ) at
+10:00 ET. The market's own level (Cboe VIX1D, scaled by VXN/VIX for QQQ) was 8.4% and 11.3%: the model charged
+buyers about **1.5× (SPY) to 1.7× (QQQ)** the market's vol. `research/market_iv.py` now prices same-day ETF options
+from VIX1D with a variance clock (the open and close carry more variance, so IV falls through the morning: SPY 0.97×
+at 9:45 ET, 0.86× at noon, 0.94× at 15:30, measured on train days). Every same-day family was re-run at 1.0× and
+1.25× of that (`research/study17_market_iv_rerun.py`, SPY + QQQ, train < May 2026 ≤ test, $ per contract):
+
+| Rule (exit) | 1.0× train / test | 1.25× train / test |
+|---|---|---|
+| **Sweep model, $0.60 (2R / 1 hour)** | **+$57 / +$108 (n 18 / 12)** | **+$45 / +$86** |
+| Gap fade > 0.3% (1 hour) | +$6.42 / +$14.50 (t 1.0 / 1.5) | −$2.90 / +$3.90 |
+| Gap and go > 0.3% (hold to 14:50 CT) | +$16.63 / +$67.58 (t 1.0 / 2.0) | −$10.40 / +$41.72 |
+| Failed ORB fade (hold to 14:50 CT) | +$33.46 / +$33.87 (t 1.5 / 1.5) | +$6.57 / +$9.40 (t 0.3 / 0.5) |
+| Prior-day value plan (1 hour) | +$8.09 / +$2.25 | −$0.30 / −$5.39 |
+| Trend day at 10:30 CT (1 hour) | +$9.60 / +$4.73 | +$4.37 / −$1.66 |
+| ORB 15-min (1 hour) | +$9.75 / −$4.36 | +$1.84 / −$10.27 |
+| Clint ORB, volume + RSI (his exit) | +$5.21 / +$0.51 (n 30 / 28) | +$2.05 / −$2.65 |
+| VWAP pullback, EMA cross, RSI(14) extremes, power hour, POC magnet, volume profile A–D, bot auto rules | negative in at least one period at 1.0× | negative |
+| Premarket FVG (study13, quick exit) | +$3.78 Nov–May / +$0.62 Jun–Sep | −$0.67 / −$4.50 |
+
+- At fair prices most rules move from clearly losing to **about breakeven**, with t-statistics mostly under 2.
+  With options 25% dearer, only the sweep model stays positive in both periods. The others are too thin to rely on.
+- **The Trade Guardian's stop is a cost on every signal.** With its stop, all 11 study11 rules lost in train even at
+  1.0×. With a plain 1-hour exit (the premium is the risk), 8 of 11 made money in train and 6 of 11 in test. On cheap
+  same-day options, normal noise hits a 30% stop before the move comes.
+
+**Swing signals on 50 years of S&P 500 closes** (`research/study18_daily_long_history.py`, `data/SPX_cboe.csv`,
+1975–2026, no costs):
+
+| Signal (above the 200-day SMA, exit close > 5-day SMA, max 5 days) | Trades | Win | Avg | t |
+|---|---|---|---|---|
+| RSI(2) < 10 | 449 | 73% | +0.40% | 5.6 |
+| RSI(2) < 5 | 228 | 79% | +0.61% | 6.1 |
+| 3 lower closes | 465 | 75% | +0.38% | 6.3 |
+| VIX > 1.3× its 20-day average (hold 5 days) | 73 | 55% | +0.19% | 0.6 |
+| Any 3-day hold (baseline) | | 56% | +0.12% | |
+
+RSI(2) and down-3 are positive in every decade since the 1980s. **As cheap long calls they still fail** (SPY+QQQ,
+VIX9D-priced, $1–$3 calls, ~10 days out): −$3 to −$64 per trade in 2025–26. IV is high after a dip and falls as
+price bounces, so the buyer pays for vol that disappears. Selling it (the Part 2/9 put spread) is the way to trade
+this signal.
