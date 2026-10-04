@@ -321,3 +321,43 @@ $/trade for 1 contract (IV ×1.15). "His $" = his exit; "Guardian $" = the Trade
 - **His exit beats the Guardian's for this setup** (take profit at the pivot, get out if the range fails):
   the Guardian's hold-and-trail gives the morning move back by the afternoon.
 - The underlying move is small (+0 to +8 bps on average), so the option cost still decides most of the result.
+
+## Part 8 — ICT concepts: fair value gaps, order blocks, liquidity sweeps (2026-10-04)
+
+`research/study14_ict_search.py` searched 960 combinations: 4 setups (FVG retrace, order-block retest, momentum
+at the displacement close, and liquidity sweep → market-structure shift → FVG retrace), 4 time windows, 4 bias
+filters (none / VWAP side / 20-day trend / both), 5 targets (1R–3R, next liquidity) and 2 displacement sizes, on
+SPY/QQQ/IWM 5-min bars. Configs were picked on TRAIN (Sep 2025 – Apr 2026) and then checked unchanged on TEST
+(May – Sep 2026). Stop checked first, no fill on the signal candle, $0.01/share cost each way.
+
+**What failed:** a plain FVG retrace (median −0.12R train / −0.06R test), order-block retests (too few fills,
+none qualified), and momentum entries (positive on train, negative on test). Across all configs only 28% were
+positive on test, and the top train configs mostly fell apart there.
+
+**What survived: the sweep model.** Of the 24 sweep configs with enough trades, 24 were positive on train and 21 on test.
+A second, wider sweep (`out/study14_sweep.csv`, 192 settings) gave the same answer: requiring the MSS roughly
+doubles the edge, and without a sweep first the same MSS + FVG entry is exactly 0.00R.
+
+`research/study14b_sweep_model.py`, rules (middle-of-the-pack settings, not the best cell):
+1. Liquidity = prior-day high/low and the 9:30–9:45 ET (8:30–8:45 CT) range high/low.
+2. A 5-min candle wicks through one and **closes back** (swept a high → puts, swept a low → calls).
+3. Within 6 candles: a big candle (body ≥ 1.25× the day's average range) closes past the last swing point and
+   leaves an FVG.
+4. Limit at the near edge of the FVG, good for 1 hour. Stop just past the sweep wick. Target 2R, **otherwise out
+   after 1 hour** (picked on train option P&L).
+
+| SPY/QQQ/IWM | Trades | Win (und.) | Avg R (t) | Option $/trade ($0.60) | Option win |
+|---|---|---|---|---|---|
+| Train | 85 | 58% | +0.23 (2.5) | +19.18 | 33% |
+| Test | 63 | 57% | +0.18 (1.8) | +21.78 | 37% |
+| $0.30 contract, all | 148 | | | +14.46 | 31% |
+
+- All three ETFs are positive in R and in option $. Both directions work, and so do 8 of the 12 months.
+- **The 7 stocks do not confirm it** (−0.02R, −$5/trade), so treat it as an index-ETF effect at best.
+- **It is lumpy.** The median option trade is −$12.61; the average is positive because of winners that pay 3–10×
+  (still +$10/trade without the best 3). At $0.30 contracts on all 3 ETFs: 69% of trades lose, the longest
+  losing streak is 15, and the max drawdown is −$332. That is bigger than a $114 account.
+- **The Trade Guardian's exits ruin it** (−$0.61 train / −$6.05 test). Its tight option stop gets hit before the
+  move. This setup's stop is the chart level (the sweep wick), plus the 1-hour time limit.
+- Caveat: about 1,150 configurations were tried, and t ≈ 3 on 148 trades is only moderate evidence after that
+  much searching. Paper-trade it before risking money.
