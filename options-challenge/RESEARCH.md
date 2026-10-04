@@ -455,3 +455,30 @@ RSI(2) and down-3 are positive in every decade since the 1980s. **As cheap long 
 VIX9D-priced, $1–$3 calls, ~10 days out): −$3 to −$64 per trade in 2025–26. IV is high after a dip and falls as
 price bounces, so the buyer pays for vol that disappears. Selling it (the Part 2/9 put spread) is the way to trade
 this signal.
+
+## Part 11 — A strategy from scratch: what SPY/QQQ's own charts predict (2026-10-04)
+
+`research/study20_from_scratch.py`: every 5-min close from 9:50 to 15:00 ET on SPY and QQQ (31,000 moments, 246
+days) described only by the chart: time of day, gap, move from yesterday's close and today's open, last 15/30/60
+minutes, position in today's range and in yesterday's range, distance from today's high/low, and how active the day
+is vs the move the options market expected (all in VIX1D-implied units). Outcome: the next hour, and a same-day call
+or put bought there at market IV and sold an hour later. Find on Sep 2025 – Apr 2026, must repeat on May – Sep 2026.
+
+| Test | Result |
+|---|---|
+| Buy a call or put at a random moment | −$0.65 / +$0.63 (calls), +$2.28 / +$1.60 (puts) per contract: options are priced fairly |
+| Each feature in quintiles (per moment, t clustered by day) | every effect within ±0.13 of a normal hourly move; signs flip between halves |
+| Move so far → rest of day, at fixed times (one point per day) | reversal in Oct–Apr (corr −0.12 to −0.15), continuation in May–Sep (+0.23 to +0.28) |
+| Adaptive: follow or fade depending on the last 20 days | −8 to +6 bps, hit 42–57%: no persistence |
+| VIX level as the switch | no consistent pattern |
+| All features + all pairs (79 terms, ridge regression) | information coefficient +0.16 to +0.26 on the months it learned, **−0.07 to −0.09** on the next months; $/trade +$19–28 → about $0 |
+
+- **A false pattern caught on the way:** averaging each day's moments first made "buy near today's low / sell near
+  today's high" look like +$25–47 per contract with t up to 8.6. It was an artifact. Days that bounce at once leave few
+  moments near the low and days that keep falling leave many, so equal day weights over-count the bounces. Per
+  moment, the effect is about zero.
+- **Only lead left:** at 11:00 ET, if yesterday's VIX9D/VIX was below 0.891 (calm short-term, the train
+  bottom third), follow the day's move to 14:50 CT: +8.5 / +5.4 bps, right 52% / 51%, $0.50 option +$23 / +$24 at
+  1.0× IV but +$5 at 1.25×, 17–20% winners. Weak and found after many slices; pre-registered for the 2023–25 holdout.
+- **Conclusion:** on these two of the most traded instruments in the world, the next hour's direction is not
+  predictable from the chart in a way that survives out of sample, and same-day options are priced fairly.
