@@ -368,3 +368,46 @@ results, but it matches the textbook definition and it was also better on train 
 - **Caveats:** 49 trades (about 1 a week). About 1,150 configurations were tried, and the sweep definition was
   tightened after seeing results. Paper-trade it before risking money. Chart examples: the "Sweep Model Playbook"
   artifact.
+
+## Part 9 — Published edges, and real implied volatility instead of the model (2026-10-04)
+
+Data added: Cboe's VIX (1990–), VIX9D (2011–) and VIX1D (2022–) daily history in `data/*_cboe.csv`, downloaded
+from cdn.cboe.com. These are the market's own implied vols, so option-selling and option-buying results no longer
+rest only on lab.py's IV assumption.
+
+**Published anomalies, checked on our data** (`research/study15_known_edges.py`):
+
+| Effect (source) | Our data | Result |
+|---|---|---|
+| Intraday momentum into the close (Gao et al. 2018; Baltussen et al. 2021) | SPY/QQQ/IWM 5-min, 738 days | −1.2 bps, t −1.5: **gone** |
+| …only on big-move days (the dealer-hedging version) | 249 days | ±1 bps, t < 0.7: **gone**; as a $0.40 0DTE trade, −$12 |
+| Turn of the month (Lakonishok & Smidt 1988) | daily, Dec 2021 – Sep 2026 | same as other days: **gone** |
+| Overnight vs daytime (Cliff et al. 2008) | daily | SPY equal; IWM's gain is all overnight. Not tradable with options |
+
+**The bank/market-maker edge is selling options.** VIX was above the following month's realised SPY volatility on
+84% of days since 2022 (19.2 vs 15.7 on average). For same-day options the gap is gone: VIX1D's variance
+matched the realised 10:00–16:00 variance exactly (ratio 1.00), so 0DTE options are fairly priced on average.
+
+**RSI(2) put spread, re-priced with real 9-day IV** (`research/study16_real_iv_spreads.py`; ATM IV = VIX9D × 0.85–1.05,
++1.5 vol points per 1% OTM of put skew, 1% half-spread per leg):
+
+| SPY/QQQ/IWM, 5 DTE | Train (Oct 2022 – 2024) | Test (2025 – Sep 2026) |
+|---|---|---|
+| $5 wide, on the RSI(2) signal | 64 trades, 75–78% win, +$19–23 (+6–7% of risk) | 58 trades, 79–81% win, +$31–39 (+9–11%), t ≈ 2 |
+| $2 wide, on the RSI(2) signal | about breakeven (costs eat a $2 width) | +$0–6 |
+| $5 wide, every Monday, no signal | +$8–18, t < 1.6 | +$2–9, t < 0.7 |
+
+Part 2's edge survives real IV, at about half the size the model gave. The signal does the work: selling every
+week with no signal is close to breakeven after skew and costs. Risk is about $340 per $5 spread (worst trade −$370),
+and it needs Options Level 3 plus $2,000 equity on Webull.
+
+**Sweep model (Part 8) with VIX1D instead of the model IV** (`research/study14c_real_iv.py`). The model's 0DTE IV
+(median 13.2% at 10:00 ET for SPY) was above the market's (8.7%), so the earlier option P&L was not flattered by
+cheap pricing:
+
+| SPY only, IV = VIX1D | Train | Test |
+|---|---|---|
+| $0.30 contract | 11 trades, +$50, 45% win | 8 trades, +$78, 50% win |
+| $0.60 contract | +$66, 55% win | +$100, 50% win |
+
+Still 19 SPY trades in 13 months: encouraging, not proven.
