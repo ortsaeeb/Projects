@@ -331,33 +331,40 @@ SPY/QQQ/IWM 5-min bars. Configs were picked on TRAIN (Sep 2025 – Apr 2026) and
 (May – Sep 2026). Stop checked first, no fill on the signal candle, $0.01/share cost each way.
 
 **What failed:** a plain FVG retrace (median −0.12R train / −0.06R test), order-block retests (too few fills,
-none qualified), and momentum entries (positive on train, negative on test). Across all configs only 28% were
+none qualified), and momentum entries (positive on train, negative on test). Across all configs only 14% were
 positive on test, and the top train configs mostly fell apart there.
 
 **What survived: the sweep model.** Of the 24 sweep configs with enough trades, 24 were positive on train and 21 on test.
-A second, wider sweep (`out/study14_sweep.csv`, 192 settings) gave the same answer: requiring the MSS roughly
-doubles the edge, and without a sweep first the same MSS + FVG entry is exactly 0.00R.
+Requiring the MSS roughly doubles the edge, and without a sweep first the same MSS + FVG entry is exactly 0.00R.
 
-`research/study14b_sweep_model.py`, rules (middle-of-the-pack settings, not the best cell):
+**Correction made while drawing the chart examples.** The first version counted any candle that crossed a level and
+closed on the far side as a "sweep", including plain breaks (open above, close below), and it allowed the sweep to
+come after the displacement candle. `sweep="true"` now requires the candle to open and close on the same side with
+only the wick through the level, at or before the displacement candle. This was a change made after seeing test
+results, but it matches the textbook definition and it was also better on train (+0.31R → +0.51R).
+
+`research/study14b_sweep_model.py`, rules:
 1. Liquidity = prior-day high/low and the 9:30–9:45 ET (8:30–8:45 CT) range high/low.
-2. A 5-min candle wicks through one and **closes back** (swept a high → puts, swept a low → calls).
-3. Within 6 candles: a big candle (body ≥ 1.25× the day's average range) closes past the last swing point and
-   leaves an FVG.
-4. Limit at the near edge of the FVG, good for 1 hour. Stop just past the sweep wick. Target 2R, **otherwise out
-   after 1 hour** (picked on train option P&L).
+2. Sweep: a 5-min candle opens and closes on the same side of a level, and only its wick goes through
+   (a wick above means puts, a wick below means calls).
+3. Within 6 candles (it can be the same candle), a big candle (body ≥ 1.25× the day's average range) closes past
+   the last swing point and leaves an FVG.
+4. Limit at the near edge of the FVG, good for 1 hour. Stop just past the day's furthest sweep wick on that side.
+   Target 2R, **otherwise out after 1 hour** (picked on train option P&L).
 
 | SPY/QQQ/IWM | Trades | Win (und.) | Avg R (t) | Option $/trade ($0.60) | Option win |
 |---|---|---|---|---|---|
-| Train | 85 | 58% | +0.23 (2.5) | +19.18 | 33% |
-| Test | 63 | 57% | +0.18 (1.8) | +21.78 | 37% |
-| $0.30 contract, all | 148 | | | +14.46 | 31% |
+| Train | 32 | 66% | +0.51 (3.0) | +30.46 | 38% |
+| Test | 17 | 71% | +0.61 (2.8) | +63.71 | 53% |
+| $0.30 contract, all | 49 | | | +30.07 | 39% |
 
-- All three ETFs are positive in R and in option $. Both directions work, and 9 of the 12 months are positive (Jan, Apr and May lose).
-- **The 7 stocks do not confirm it** (−0.02R, −$5/trade), so treat it as an index-ETF effect at best.
-- **It is lumpy.** The median option trade is −$12.61; the average is positive because of winners that pay 3–10×
-  (still +$10/trade without the best 3). At $0.30 contracts on all 3 ETFs: 69% of trades lose, the longest
-  losing streak is 15, and the max drawdown is −$332. That is bigger than a $114 account.
-- **The Trade Guardian's exits ruin it** (−$0.61 train / −$6.05 test). Its tight option stop gets hit before the
-  move. This setup's stop is the chart level (the sweep wick), plus the 1-hour time limit.
-- Caveat: about 1,150 configurations were tried, and t ≈ 3 on 148 trades is only moderate evidence after that
-  much searching. Paper-trade it before risking money.
+- All three ETFs are positive in R (QQQ is about flat in option $). Calls and puts both work, and 11 of the 12 months
+  are positive in R (April loses).
+- **The 7 stocks do not confirm it** (−0.22R on test, t −2.2), so treat it as an index-ETF effect at best.
+- **It is lumpy.** The median option trade is −$7.82; winners pay 3–10× (still +$17/trade without the best 3).
+  At $0.30 contracts: the max drawdown is −$87, the longest losing streak is 6, and the worst trade is −$25.
+- **The Trade Guardian's exits ruin it** (+$4 train / −$7.63 test). Its tight option stop gets hit before the
+  move. Use the chart stop, the 2R target and the 1-hour limit.
+- **Caveats:** 49 trades (about 1 a week). About 1,150 configurations were tried, and the sweep definition was
+  tightened after seeing results. Paper-trade it before risking money. Chart examples: the "Sweep Model Playbook"
+  artifact.

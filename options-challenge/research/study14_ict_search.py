@@ -92,10 +92,11 @@ def setups(d, f, cfg, levels):
     swept = {}  # side -> (bar, extreme)
     for k in range(2, b + 1):
         if st == "sweep":
-            for lv in levels(k):
-                if d.h[k] > lv and d.c[k] < lv:
+            sk = cfg.get("sweep", "any")  # true: opens and closes on the same side, only the wick crosses
+            for lv in levels(k):                # break: opens on one side, closes through it; any: either
+                if d.h[k] > lv and d.c[k] < lv and (sk == "any" or (d.o[k] < lv) == (sk == "true")):
                     swept[-1] = (k, max(d.h[k], swept.get(-1, (0, 0))[1]))
-                if d.l[k] < lv and d.c[k] > lv:
+                if d.l[k] < lv and d.c[k] > lv and (sk == "any" or (d.o[k] > lv) == (sk == "true")):
                     swept[1] = (k, min(d.l[k], swept.get(1, (0, 1e9))[1]))
         g = fvgs(d, f, k, disp)
         if g is None or k < a:
@@ -117,7 +118,7 @@ def setups(d, f, cfg, levels):
                     yield k, side, (ohi if side > 0 else olo), (olo if side > 0 else ohi), "limit"
         elif st == "sweep":
             sw = swept.get(side)
-            if sw and k - sw[0] <= cfg.get("lb", 8) and (not cfg.get("mss", True) or mss(d, f, k, side)):
+            if sw and sw[0] <= k - 1 and k - sw[0] <= cfg.get("lb", 8) and (not cfg.get("mss", True) or mss(d, f, k, side)):
                 entry = hi if side > 0 else lo
                 stop = sw[1] - 0.02 if side > 0 else sw[1] + 0.02
                 yield k, side, entry, stop, "limit"

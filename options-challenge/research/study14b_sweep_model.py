@@ -3,12 +3,13 @@ checked for robustness and converted to option P&L.
 
 The rule set (picked on TRAIN only, from out/study14_sweep.csv; middle-of-the-pack settings, not the best cell):
   1. Liquidity = prior-day high/low and the opening-range (9:30-9:45 ET) high/low.
-  2. Sweep: a 5-min candle trades through one of those levels and CLOSES back on the other side.
-       swept a high -> look for puts; swept a low -> look for calls.
+  2. Sweep: a 5-min candle opens on one side of a level, wicks through it and CLOSES back on the side it opened
+     (a candle that opens on one side and closes on the other is a break, not a sweep; see study14 "sweep" option).
+       wick above a level -> look for puts; wick below a level -> look for calls.
   3. Within 6 candles: a displacement candle (body >= 1.25x the day's average candle range) that closes beyond
      the latest swing point (market-structure shift) and leaves a fair value gap.
   4. Entry: limit at the near edge of the FVG, valid for 12 candles (1 hour). No fill = no trade.
-  5. Stop: 2 cents beyond the sweep's extreme wick. Target: 2R. Otherwise out after 12 candles (1 hour).
+  5. Stop: 2 cents beyond the most extreme sweep wick of the day on that side. Target: 2R. Otherwise out after 12 candles (1 hour).
      (The 1-hour cap was picked on TRAIN option P&L among 30 min / 1 h / 2 h / hold-to-close.)
   6. One trade per symbol per day. Signals from 9:45 to 14:55 ET (8:45-13:55 CT).
 
@@ -24,7 +25,7 @@ import lab
 import study11_september as G
 import study14_ict_search as S
 
-CFG = dict(setup="sweep", win="all", bias="none", tgt="2", disp=1.25, levels="both", mss=True, lb=6, maxbars=12)
+CFG = dict(setup="sweep", win="all", bias="none", tgt="2", disp=1.25, levels="both", mss=True, lb=6, maxbars=12, sweep="true")
 BUDGET = float(os.environ.get("BUDGET", "0.60"))
 
 
@@ -106,7 +107,8 @@ def main():
 
     # skeptic checks
     print("\nSkeptic checks (ETFs, all dates, avg R):")
-    for name, cfg in (("no sweep needed (plain MSS + FVG retrace)", dict(CFG, setup="fvg")),
+    for name, cfg in (("any cross-and-close-back counts (study14's first version)", dict(CFG, sweep="any")),
+                      ("breaks only (open one side, close the other)", dict(CFG, sweep="break")),("no sweep needed (plain MSS + FVG retrace)", dict(CFG, setup="fvg")),
                       ("sweep but no MSS required", dict(CFG, mss=False)),
                       ("1R target", dict(CFG, tgt="1")), ("3R target", dict(CFG, tgt="3")),
                       ("displacement 1.0x", dict(CFG, disp=1.0)), ("displacement 1.5x", dict(CFG, disp=1.5)),
