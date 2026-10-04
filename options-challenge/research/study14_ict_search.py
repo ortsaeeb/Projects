@@ -38,6 +38,7 @@ ETF = ["SPY", "QQQ", "IWM"]
 LAST = 76  # bar closing 15:50 ET
 WINDOWS = {"open": (3, 17), "sb": (6, 17), "all": (3, 65), "pm": (48, 65)}  # signal bar index range
 COST = 0.01
+FILL_THROUGH = 0.0  # $ a limit needs price to trade through before it counts as filled (0 = a touch fills)
 
 
 # ------------------------------------------------------------------ features
@@ -142,7 +143,7 @@ def simulate(d, k, side, entry, stop, kind, tgt, levels, wait=12, maxbars=None):
     else:
         e = None
         for j in range(k + 1, min(k + 1 + wait, LAST)):
-            touched = d.l[j] <= entry if side > 0 else d.h[j] >= entry
+            touched = d.l[j] <= entry - FILL_THROUGH if side > 0 else d.h[j] >= entry + FILL_THROUGH
             if touched:
                 e = j
                 if (d.o[j] - entry) * side < 0:  # gapped through the limit: fill at the open
