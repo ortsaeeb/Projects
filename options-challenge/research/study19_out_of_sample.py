@@ -8,8 +8,8 @@ Pre-registered before looking at this data (2026-10-04):
   primary    the sweep model exactly as in study14b (CFG unchanged), $0.60 and $0.30 contracts
   secondary  gap fade > 0.3% with a 1-hour exit; gap and go > 0.3% held to 14:50 CT; failed-ORB fade held to 14:50 CT
   controls   ORB 15-min with a 1-hour exit, RSI(14) 5-min extremes with a 1-hour exit, power hour (none passed before)
-  explore    the sweep model with sweep="any" (study14's looser first version, about twice as many trades): reported,
-             not a candidate
+  explore    the sweep model with sweep="any" (study14's looser first version, about twice as many trades), and with
+             prior-day levels only (levels="pd", the strongest subset in Part 9): reported, not candidates
   "works"    average $/contract > 0 at BOTH 1.0x and 1.25x market IV over the new period, t > 1.5 at 1.0x.
 Volume/VWAP rules are not tested: the CFD's volume is tick volume, not exchange volume.
 
@@ -109,7 +109,8 @@ def run_rules(days):
 def run_sweep():
     import study14b_sweep_model as B
     out = []
-    for label, cfg, budgets in (("SWEEP MODEL", B.CFG, (0.60, 0.30)), ("explore: sweep 'any'", dict(B.CFG, sweep="any"), (0.30,))):
+    for label, cfg, budgets in (("SWEEP MODEL", B.CFG, (0.60, 0.30)), ("explore: sweep 'any'", dict(B.CFG, sweep="any"), (0.30,)),
+                                ("explore: prior-day levels only", dict(B.CFG, levels="pd"), (0.30,))):
         for budget in budgets:
             B.BUDGET = budget
             e, _ = B.run(SYMS, cfg)
