@@ -3,13 +3,10 @@
 // for the newest gap and checks whether price has traded back through it since.
 minPct  = define(0.03, name="Min gap size (% of price)")
 dispMul = define(1.25, name="Big candle x avg range (0.01 = off)")
-gapType = define(1, name="Gap type: 1 = wicks, 2 = bodies")
 
-// Edges used to find a gap: candle wicks (strict) or candle bodies (looser)
-bodyHi  = close > open ? close : open
-bodyLo  = close > open ? open : close
-hiRef   = gapType == 2 ? bodyHi : high
-loRef   = gapType == 2 ? bodyLo : low
+// Gap edges are the candle wicks (true FVG definition)
+hiRef   = high
+loRef   = low
 
 avgRng  = ind.sma(high - low, 20)
 body1   = close[1] > open[1] ? close[1] - open[1] : open[1] - close[1]
