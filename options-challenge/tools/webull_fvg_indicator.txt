@@ -1,9 +1,10 @@
-// Fair Value Gaps for the Webull Script Editor (Pine v5-style names: input.*, ta.*, math.*, var)
-indicator(title="Fair Value Gaps", shorttitle="FVG", overlay=true)
+// Fair Value Gaps for the Webull Script Editor
+study(title="Fair Value Gaps", shorttitle="FVG", overlay=true)
 
-minPct  = input.float(0.03, title="Min gap size (% of price)")
-dispOn  = input.bool(true, title="Only gaps from a big candle")
-dispMul = input.float(1.25, title="Big candle = body x average range")
+// Settings: edit the numbers here
+minPct  = 0.03     // minimum gap size, % of price
+dispOn  = true     // only gaps whose middle candle is big
+dispMul = 1.25     // big = body at least this x the 20-bar average range
 
 avgRng  = ta.sma(high - low, 20)
 bigMid  = math.abs(close[1] - open[1]) >= dispMul * avgRng[1]
@@ -17,19 +18,22 @@ var float bullBot = na
 var float bearTop = na
 var float bearBot = na
 
+bullFilled = not na(bullBot) and low <= bullBot
+bearFilled = not na(bearTop) and high >= bearTop
+
+if bullFilled
+    bullTop := na
+    bullBot := na
 if bullNew
     bullTop := low
     bullBot := high[2]
-else if not na(bullBot) and low <= bullBot
-    bullTop := na
-    bullBot := na
 
+if bearFilled
+    bearTop := na
+    bearBot := na
 if bearNew
     bearTop := low[2]
     bearBot := high
-else if not na(bearTop) and high >= bearTop
-    bearTop := na
-    bearBot := na
 
 p1 = plot(bullTop, title="Bull FVG top", color=color.green, style=plot.style_linebr)
 p2 = plot(bullBot, title="Bull FVG bottom", color=color.green, style=plot.style_linebr)
