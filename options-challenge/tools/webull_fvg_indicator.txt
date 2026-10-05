@@ -1,0 +1,39 @@
+//@version=1
+study(title="Fair Value Gaps", shorttitle="FVG", overlay=true)
+
+// Settings
+minPct  = input(0.03, title="Min gap size (% of price)")
+dispOn  = input(true, title="Only gaps from a big candle")
+dispMul = input(1.25, title="Big candle = body x average range")
+
+// A big (displacement) middle candle: body >= dispMul x the 20-bar average range
+avgRng  = sma(high - low, 20)
+bigMid  = abs(close[1] - open[1]) >= dispMul * avgRng[1]
+okDisp  = dispOn ? bigMid : true
+
+// New gaps on this bar (3-candle pattern: bars [2], [1], [0])
+bullNew = low > high[2] and (low - high[2]) / close * 100 >= minPct and okDisp
+bearNew = high < low[2] and (low[2] - high) / close * 100 >= minPct and okDisp
+
+// Track the most recent bullish gap until price trades back down to its bottom
+bullTop = bullNew ? low : nz(bullTop[1])
+bullBot = bullNew ? high[2] : nz(bullBot[1])
+bullOff = bullNew ? 0 : (low <= bullBot ? 1 : nz(bullOff[1], 1))
+
+// Track the most recent bearish gap until price trades back up to its top
+bearTop = bearNew ? low[2] : nz(bearTop[1])
+bearBot = bearNew ? high : nz(bearBot[1])
+bearOff = bearNew ? 0 : (high >= bearTop ? 1 : nz(bearOff[1], 1))
+
+// Draw open gaps (lines disappear once the gap is filled)
+p1 = plot(bullOff == 0 ? bullTop : na, title="Bull FVG top", color=color.green, linewidth=1, style=plot.style_linebr)
+p2 = plot(bullOff == 0 ? bullBot : na, title="Bull FVG bottom", color=color.green, linewidth=1, style=plot.style_linebr)
+fill(p1, p2, color=color.new(color.green, 80), title="Bull FVG zone")
+
+p3 = plot(bearOff == 0 ? bearTop : na, title="Bear FVG top", color=color.red, linewidth=1, style=plot.style_linebr)
+p4 = plot(bearOff == 0 ? bearBot : na, title="Bear FVG bottom", color=color.red, linewidth=1, style=plot.style_linebr)
+fill(p3, p4, color=color.new(color.red, 80), title="Bear FVG zone")
+
+// Mark the candle where each gap forms
+plotshape(bullNew, title="New bull FVG", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.tiny)
+plotshape(bearNew, title="New bear FVG", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.tiny)
