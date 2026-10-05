@@ -1,0 +1,81 @@
+// Sweep Setup (version 1) - USE ON THE 5-MINUTE CHART ONLY (the timeframe the setup was tested on)
+// Each morning type in yesterday's high/low (from the brief) and, at 8:45 CT, the 8:30-8:45 opening-range high/low.
+// Put setup: a candle wicks above a level and closes back below it (sweep), then within 6 candles a big red
+// candle breaks below the recent lows and leaves a fair value gap. Call setup = the mirror image.
+// When a setup appears, three lines show for 12 candles: white = entry (gap edge), orange = stop, green = 2R target.
+pdh = define(0.01, name="Yesterday high")
+pdl = define(0.01, name="Yesterday low")
+orh = define(0.01, name="Opening range high (8:30-8:45 CT)")
+orl = define(0.01, name="Opening range low (8:30-8:45 CT)")
+dispMul = define(1.25, name="Shift candle = body x avg range")
+
+avgRng = ind.sma(high - low, 20)
+
+// Recent swing range for the break (candles 1-5 back)
+hi5_1 = high[1]
+hi5_2 = hi5_1 > high[2] ? hi5_1 : high[2]
+hi5_3 = hi5_2 > high[3] ? hi5_2 : high[3]
+hi5_4 = hi5_3 > high[4] ? hi5_3 : high[4]
+hi5_5 = hi5_4 > high[5] ? hi5_4 : high[5]
+hi5 = hi5_5
+lo5_1 = low[1]
+lo5_2 = lo5_1 < low[2] ? lo5_1 : low[2]
+lo5_3 = lo5_2 < low[3] ? lo5_2 : low[3]
+lo5_4 = lo5_3 < low[4] ? lo5_3 : low[4]
+lo5_5 = lo5_4 < low[5] ? lo5_4 : low[5]
+lo5 = lo5_5
+
+// Stop reference: extreme wick of the last 8 candles
+hi8_0 = high
+hi8_1 = hi8_0 > high[1] ? hi8_0 : high[1]
+hi8_2 = hi8_1 > high[2] ? hi8_1 : high[2]
+hi8_3 = hi8_2 > high[3] ? hi8_2 : high[3]
+hi8_4 = hi8_3 > high[4] ? hi8_3 : high[4]
+hi8_5 = hi8_4 > high[5] ? hi8_4 : high[5]
+hi8_6 = hi8_5 > high[6] ? hi8_5 : high[6]
+hi8_7 = hi8_6 > high[7] ? hi8_6 : high[7]
+hi8 = hi8_7
+lo8_0 = low
+lo8_1 = lo8_0 < low[1] ? lo8_0 : low[1]
+lo8_2 = lo8_1 < low[2] ? lo8_1 : low[2]
+lo8_3 = lo8_2 < low[3] ? lo8_2 : low[3]
+lo8_4 = lo8_3 < low[4] ? lo8_3 : low[4]
+lo8_5 = lo8_4 < low[5] ? lo8_4 : low[5]
+lo8_6 = lo8_5 < low[6] ? lo8_5 : low[6]
+lo8_7 = lo8_6 < low[7] ? lo8_6 : low[7]
+lo8 = lo8_7
+
+// 1) Sweep: wick through a level, open and close back on the same side (any level, from either side)
+sweepHi = (pdh > 1 and high > pdh and open < pdh and close < pdh) or (pdl > 1 and high > pdl and open < pdl and close < pdl) or (orh > 1 and high > orh and open < orh and close < orh) or (orl > 1 and high > orl and open < orl and close < orl)
+sweepLo = (pdh > 1 and low < pdh and open > pdh and close > pdh) or (pdl > 1 and low < pdl and open > pdl and close > pdl) or (orh > 1 and low < orh and open > orh and close > orh) or (orl > 1 and low < orl and open > orl and close > orl)
+recentSweepHi = sweepHi[1] or sweepHi[2] or sweepHi[3] or sweepHi[4] or sweepHi[5] or sweepHi[6] or sweepHi[7]
+recentSweepLo = sweepLo[1] or sweepLo[2] or sweepLo[3] or sweepLo[4] or sweepLo[5] or sweepLo[6] or sweepLo[7]
+
+// 2) Shift: the previous candle is big and closes past the recent swing low/high
+bigDown = open[1] - close[1] >= dispMul * avgRng[1] and close[1] < lo5[1]
+bigUp   = close[1] - open[1] >= dispMul * avgRng[1] and close[1] > hi5[1]
+
+// 3) Fair value gap left by the shift candle -> setup on this candle
+putSetup  = recentSweepHi and bigDown and high < low[2]
+callSetup = recentSweepLo and bigUp and low > high[2]
+
+// Trade lines for the 12 candles after a setup
+putEntry  = putSetup ? high : (putSetup[1] ? high[1] : (putSetup[2] ? high[2] : (putSetup[3] ? high[3] : (putSetup[4] ? high[4] : (putSetup[5] ? high[5] : (putSetup[6] ? high[6] : (putSetup[7] ? high[7] : (putSetup[8] ? high[8] : (putSetup[9] ? high[9] : (putSetup[10] ? high[10] : (putSetup[11] ? high[11] : (close))))))))))))
+putStop   = putSetup ? hi8 : (putSetup[1] ? hi8[1] : (putSetup[2] ? hi8[2] : (putSetup[3] ? hi8[3] : (putSetup[4] ? hi8[4] : (putSetup[5] ? hi8[5] : (putSetup[6] ? hi8[6] : (putSetup[7] ? hi8[7] : (putSetup[8] ? hi8[8] : (putSetup[9] ? hi8[9] : (putSetup[10] ? hi8[10] : (putSetup[11] ? hi8[11] : (close))))))))))))
+putOn     = putSetup ? 1 : (putSetup[1] ? 1 : (putSetup[2] ? 1 : (putSetup[3] ? 1 : (putSetup[4] ? 1 : (putSetup[5] ? 1 : (putSetup[6] ? 1 : (putSetup[7] ? 1 : (putSetup[8] ? 1 : (putSetup[9] ? 1 : (putSetup[10] ? 1 : (putSetup[11] ? 1 : (0))))))))))))
+putTarget = putEntry - 2 * (putStop - putEntry)
+callEntry = callSetup ? low : (callSetup[1] ? low[1] : (callSetup[2] ? low[2] : (callSetup[3] ? low[3] : (callSetup[4] ? low[4] : (callSetup[5] ? low[5] : (callSetup[6] ? low[6] : (callSetup[7] ? low[7] : (callSetup[8] ? low[8] : (callSetup[9] ? low[9] : (callSetup[10] ? low[10] : (callSetup[11] ? low[11] : (close))))))))))))
+callStop  = callSetup ? lo8 : (callSetup[1] ? lo8[1] : (callSetup[2] ? lo8[2] : (callSetup[3] ? lo8[3] : (callSetup[4] ? lo8[4] : (callSetup[5] ? lo8[5] : (callSetup[6] ? lo8[6] : (callSetup[7] ? lo8[7] : (callSetup[8] ? lo8[8] : (callSetup[9] ? lo8[9] : (callSetup[10] ? lo8[10] : (callSetup[11] ? lo8[11] : (close))))))))))))
+callOn    = callSetup ? 1 : (callSetup[1] ? 1 : (callSetup[2] ? 1 : (callSetup[3] ? 1 : (callSetup[4] ? 1 : (callSetup[5] ? 1 : (callSetup[6] ? 1 : (callSetup[7] ? 1 : (callSetup[8] ? 1 : (callSetup[9] ? 1 : (callSetup[10] ? 1 : (callSetup[11] ? 1 : (0))))))))))))
+callTarget = callEntry + 2 * (callEntry - callStop)
+
+plt(pdh > 1 ? pdh : close, color=pdh > 1 ? #2196F3 : #00000000, name="Yesterday high")
+plt(pdl > 1 ? pdl : close, color=pdl > 1 ? #2196F3 : #00000000, name="Yesterday low")
+plt(orh > 1 ? orh : close, color=orh > 1 ? #FFD600 : #00000000, name="Opening range high")
+plt(orl > 1 ? orl : close, color=orl > 1 ? #FFD600 : #00000000, name="Opening range low")
+plt(putEntry, color=putOn == 1 ? #FFFFFF : #00000000, name="PUT entry")
+plt(putStop, color=putOn == 1 ? #FF9100 : #00000000, name="PUT stop")
+plt(putTarget, color=putOn == 1 ? #00E676 : #00000000, name="PUT target 2R")
+plt(callEntry, color=callOn == 1 ? #FFFFFF : #00000000, name="CALL entry")
+plt(callStop, color=callOn == 1 ? #FF9100 : #00000000, name="CALL stop")
+plt(callTarget, color=callOn == 1 ? #00E676 : #00000000, name="CALL target 2R")
