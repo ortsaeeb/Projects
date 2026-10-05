@@ -2,14 +2,14 @@
 // Webull scripts can't carry values from bar to bar, so each bar looks back 12 candles (1 hour on 5-min)
 // for the newest gap and checks whether price has traded back through it since.
 minPct  = define(0.03, name="Min gap size (% of price)")
-dispMul = define(1.25, name="Big candle = body x avg range (0 = off)")
-useBody = define(0, name="Body gaps: 1 = bodies only, 0 = wicks")
+dispMul = define(1.25, name="Big candle x avg range (0.01 = off)")
+gapType = define(1, name="Gap type: 1 = wicks, 2 = bodies")
 
 // Edges used to find a gap: candle wicks (strict) or candle bodies (looser)
 bodyHi  = close > open ? close : open
 bodyLo  = close > open ? open : close
-hiRef   = useBody == 1 ? bodyHi : high
-loRef   = useBody == 1 ? bodyLo : low
+hiRef   = gapType == 2 ? bodyHi : high
+loRef   = gapType == 2 ? bodyLo : low
 
 avgRng  = ind.sma(high - low, 20)
 body1   = close[1] > open[1] ? close[1] - open[1] : open[1] - close[1]
