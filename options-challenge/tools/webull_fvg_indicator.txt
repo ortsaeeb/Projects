@@ -1,5 +1,6 @@
 // Fair Value Gaps for the Webull Script Editor
-// Uses Webull's own names seen in working Webull scripts: define() for settings, ind.sma(), plt().
+// Webull scripts can't carry values from bar to bar, so each bar looks back 12 candles (1 hour on 5-min)
+// for the newest gap and checks whether price has traded back through it since.
 minPct  = define(0.03, name="Min gap size (% of price)")
 dispMul = define(1.25, name="Big candle = body x avg range")
 
@@ -10,14 +11,14 @@ bigMid  = body1 >= dispMul * avgRng[1]
 bullNew = low > high[2] and (low - high[2]) / close * 100 >= minPct and bigMid
 bearNew = high < low[2] and (low[2] - high) / close * 100 >= minPct and bigMid
 
-// Remember the latest gap; "live" = 1 until price trades back through it
-bullTop  = bullNew ? low : bullTop[1]
-bullBot  = bullNew ? high[2] : bullBot[1]
-bullLive = bullNew ? 1 : (low <= bullBot[1] ? 0 : bullLive[1])
+// Newest gap in the last 12 bars: top, bottom, and live = 1 while price hasn't traded back through it
+bullTop  = bullNew ? low : (bullNew[1] ? low[1] : (bullNew[2] ? low[2] : (bullNew[3] ? low[3] : (bullNew[4] ? low[4] : (bullNew[5] ? low[5] : (bullNew[6] ? low[6] : (bullNew[7] ? low[7] : (bullNew[8] ? low[8] : (bullNew[9] ? low[9] : (bullNew[10] ? low[10] : (bullNew[11] ? low[11] : close)))))))))))
+bullBot  = bullNew ? high[2] : (bullNew[1] ? high[3] : (bullNew[2] ? high[4] : (bullNew[3] ? high[5] : (bullNew[4] ? high[6] : (bullNew[5] ? high[7] : (bullNew[6] ? high[8] : (bullNew[7] ? high[9] : (bullNew[8] ? high[10] : (bullNew[9] ? high[11] : (bullNew[10] ? high[12] : (bullNew[11] ? high[13] : close)))))))))))
+bullLive = bullNew ? 1 : (bullNew[1] ? ((low <= high[3]) ? 0 : 1) : (bullNew[2] ? ((low <= high[4] or low[1] <= high[4]) ? 0 : 1) : (bullNew[3] ? ((low <= high[5] or low[1] <= high[5] or low[2] <= high[5]) ? 0 : 1) : (bullNew[4] ? ((low <= high[6] or low[1] <= high[6] or low[2] <= high[6] or low[3] <= high[6]) ? 0 : 1) : (bullNew[5] ? ((low <= high[7] or low[1] <= high[7] or low[2] <= high[7] or low[3] <= high[7] or low[4] <= high[7]) ? 0 : 1) : (bullNew[6] ? ((low <= high[8] or low[1] <= high[8] or low[2] <= high[8] or low[3] <= high[8] or low[4] <= high[8] or low[5] <= high[8]) ? 0 : 1) : (bullNew[7] ? ((low <= high[9] or low[1] <= high[9] or low[2] <= high[9] or low[3] <= high[9] or low[4] <= high[9] or low[5] <= high[9] or low[6] <= high[9]) ? 0 : 1) : (bullNew[8] ? ((low <= high[10] or low[1] <= high[10] or low[2] <= high[10] or low[3] <= high[10] or low[4] <= high[10] or low[5] <= high[10] or low[6] <= high[10] or low[7] <= high[10]) ? 0 : 1) : (bullNew[9] ? ((low <= high[11] or low[1] <= high[11] or low[2] <= high[11] or low[3] <= high[11] or low[4] <= high[11] or low[5] <= high[11] or low[6] <= high[11] or low[7] <= high[11] or low[8] <= high[11]) ? 0 : 1) : (bullNew[10] ? ((low <= high[12] or low[1] <= high[12] or low[2] <= high[12] or low[3] <= high[12] or low[4] <= high[12] or low[5] <= high[12] or low[6] <= high[12] or low[7] <= high[12] or low[8] <= high[12] or low[9] <= high[12]) ? 0 : 1) : (bullNew[11] ? ((low <= high[13] or low[1] <= high[13] or low[2] <= high[13] or low[3] <= high[13] or low[4] <= high[13] or low[5] <= high[13] or low[6] <= high[13] or low[7] <= high[13] or low[8] <= high[13] or low[9] <= high[13] or low[10] <= high[13]) ? 0 : 1) : 0)))))))))))
 
-bearTop  = bearNew ? low[2] : bearTop[1]
-bearBot  = bearNew ? high : bearBot[1]
-bearLive = bearNew ? 1 : (high >= bearTop[1] ? 0 : bearLive[1])
+bearTop  = bearNew ? low[2] : (bearNew[1] ? low[3] : (bearNew[2] ? low[4] : (bearNew[3] ? low[5] : (bearNew[4] ? low[6] : (bearNew[5] ? low[7] : (bearNew[6] ? low[8] : (bearNew[7] ? low[9] : (bearNew[8] ? low[10] : (bearNew[9] ? low[11] : (bearNew[10] ? low[12] : (bearNew[11] ? low[13] : close)))))))))))
+bearBot  = bearNew ? high : (bearNew[1] ? high[1] : (bearNew[2] ? high[2] : (bearNew[3] ? high[3] : (bearNew[4] ? high[4] : (bearNew[5] ? high[5] : (bearNew[6] ? high[6] : (bearNew[7] ? high[7] : (bearNew[8] ? high[8] : (bearNew[9] ? high[9] : (bearNew[10] ? high[10] : (bearNew[11] ? high[11] : close)))))))))))
+bearLive = bearNew ? 1 : (bearNew[1] ? ((high >= low[3]) ? 0 : 1) : (bearNew[2] ? ((high >= low[4] or high[1] >= low[4]) ? 0 : 1) : (bearNew[3] ? ((high >= low[5] or high[1] >= low[5] or high[2] >= low[5]) ? 0 : 1) : (bearNew[4] ? ((high >= low[6] or high[1] >= low[6] or high[2] >= low[6] or high[3] >= low[6]) ? 0 : 1) : (bearNew[5] ? ((high >= low[7] or high[1] >= low[7] or high[2] >= low[7] or high[3] >= low[7] or high[4] >= low[7]) ? 0 : 1) : (bearNew[6] ? ((high >= low[8] or high[1] >= low[8] or high[2] >= low[8] or high[3] >= low[8] or high[4] >= low[8] or high[5] >= low[8]) ? 0 : 1) : (bearNew[7] ? ((high >= low[9] or high[1] >= low[9] or high[2] >= low[9] or high[3] >= low[9] or high[4] >= low[9] or high[5] >= low[9] or high[6] >= low[9]) ? 0 : 1) : (bearNew[8] ? ((high >= low[10] or high[1] >= low[10] or high[2] >= low[10] or high[3] >= low[10] or high[4] >= low[10] or high[5] >= low[10] or high[6] >= low[10] or high[7] >= low[10]) ? 0 : 1) : (bearNew[9] ? ((high >= low[11] or high[1] >= low[11] or high[2] >= low[11] or high[3] >= low[11] or high[4] >= low[11] or high[5] >= low[11] or high[6] >= low[11] or high[7] >= low[11] or high[8] >= low[11]) ? 0 : 1) : (bearNew[10] ? ((high >= low[12] or high[1] >= low[12] or high[2] >= low[12] or high[3] >= low[12] or high[4] >= low[12] or high[5] >= low[12] or high[6] >= low[12] or high[7] >= low[12] or high[8] >= low[12] or high[9] >= low[12]) ? 0 : 1) : (bearNew[11] ? ((high >= low[13] or high[1] >= low[13] or high[2] >= low[13] or high[3] >= low[13] or high[4] >= low[13] or high[5] >= low[13] or high[6] >= low[13] or high[7] >= low[13] or high[8] >= low[13] or high[9] >= low[13] or high[10] >= low[13]) ? 0 : 1) : 0)))))))))))
 
 plt(bullTop, color=bullLive == 1 ? #00C853 : #00000000, name="Bull FVG top")
 plt(bullBot, color=bullLive == 1 ? #00C853 : #00000000, name="Bull FVG bottom")
