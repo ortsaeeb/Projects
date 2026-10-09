@@ -482,3 +482,29 @@ or put bought there at market IV and sold an hour later. Find on Sep 2025 – Ap
   1.0× IV but +$5 at 1.25×, 17–20% winners. Weak and found after many slices; pre-registered for the 2023–25 holdout.
 - **Conclusion:** on these two of the most traded instruments in the world, the next hour's direction is not
   predictable from the chart in a way that survives out of sample, and same-day options are priced fairly.
+
+## Part 12 — The trader's own setup: bounces and rejections off the 200 EMA (2026-10-09)
+
+`research/study23_ema200.py` and `research/study24_ema200_confluence.py`, on SPY and QQQ:
+- **Data:** 5/15/30-min charts from Sep 2025 – Sep 2026. 1-min charts from Dukascopy index CFDs, Jun – Oct 8 2026, scaled to SPY/QQQ (5-min returns correlate 0.99 with real SPY). The Nasdaq series is missing 9 days in late July because the server kept failing.
+- **Touch:** price closes 3 bars on one side of the EMA, then wicks into it. **Hold:** the touch candle closes back on its original side.
+- **Trade:** enter at the hold candle's close (8:45–14:00 CT), stop 1¢ past the wick, target 2R, exit after 60 min. Options are a $0.30 same-day contract priced at market IV.
+- **Periods:** train Sep–Apr, test May–Sep. The 1-min data is split by halves of its own dates.
+
+| Chart | Holds | Train | Test | Option $/trade (test) |
+|---|---|---|---|---|
+| 30-min | 134 | +0.15R | −0.10R | +$3.73 (3 trades make all of it; without them it loses) |
+| 15-min | 200 | −0.07R | +0.07R | −$1.84 |
+| 5-min | 559 | −0.00R | −0.17R | −$3.67 |
+| 1-min, EMA on regular hours | 1061 | (all after the split) | −0.02R | −$2.15 |
+| 1-min, EMA with extended hours | 1240 | | +0.00R | −$2.11 |
+
+- **Is the 200 special? No.** About 50% of touches close back on their side on every chart. That is the same at the 100 and 300 EMA, and at fake lines drawn half a bar above or below the 200. The next hour after a hold moves about 0 bp everywhere.
+- **Exits:** none of 1R, 1.5R, 2R or 3R targets, or holds of 30 min, 60 min, 120 min or to the close, turns it positive on both periods.
+- **Confirmation entry:** waiting for a break of the hold candle's high/low helps on train (5-min +0.17R) but fails on test.
+- **Indicators (42 per signal):**
+  - **Readings:** RSI(14), RSI(2), Stochastic, MACD; VWAP, EMA 9/20/50, Bollinger Bands, ADX; a volume spike vs the same time slot; the 30-min 200 EMA; daily 50/200 SMA; VIX1D, gap, time of day; hammer, engulfing, close position; whether the EMA sits on yesterday's high/low/close, a pivot or the opening range; which test of the EMA it is since the last cross.
+  - **One at a time:** at most one per chart helps on both periods. That is about what chance gives across 42 tries, and none makes the options profitable.
+  - **All at once:** boosted trees and logistic regression score a test AUC of 0.43–0.55, a coin flip.
+- **Why the 1-min chart is worse in practice:** the median wick stop is $0.16, so a 2R win is a 32¢ move. On a $0.30 option the bid/ask spread takes most of that.
+- **Conclusion:** a 200 EMA touch is a coin flip on 1/5/15/30-min charts, with or without extra indicators. The bounces are memorable on the chart; the slices through are forgotten.
