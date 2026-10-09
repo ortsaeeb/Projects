@@ -196,8 +196,8 @@ def models(x, split=lab.SPLIT):
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
     from sklearn.impute import SimpleImputer
-    cols = list(x.columns[7:])
     tr, te = x[x.date < split], x[x.date >= split]
+    cols = [c for c in x.columns[7:] if tr[c].notna().any()]
     X = lambda z: z[cols].astype(float).values
     out = []
     for name, mdl in (("boosted trees", HistGradientBoostingClassifier(max_depth=3, learning_rate=0.05, max_iter=150,
