@@ -180,14 +180,16 @@ def card(lead, note, recall=None, checked=""):
         best = lead["marked"][0][0]
         at_best = [s for p, s in lead["marked"] if p == best]
         others = [(p, s) for p, s in lead["marked"] if p != best]
-        lines.append(f"💲 <b>{money(best)}</b>  <s>{money(it.get('p'))}</s>  −{round(lead['pct'] * 100)}%")
+        lines.append(f"💲 <b>{money(best)} in store</b>  <s>{money(it.get('p'))}</s>  −{round(lead['pct'] * 100)}%")
+        lines.append(f"🌐 Website still shows {money(it.get('p'))}. Clearance prices are in-store only.")
         lines.append(f"📍 {esc(store_names(at_best))}")
         if others:
             lines.append(f"     also {esc(store_names([s for _, s in others], 2))} from {money(others[0][0])}")
         lines.append(f"ℹ️ Rang up $0.01 at other stores ({age_text(lead['days'])}{il}), so this price may keep dropping.")
         target = at_best[0]
     else:
-        lines.append(f"💲 Retail {money(it.get('p'))} · rang up <b>$0.01</b> elsewhere {age_text(lead['days'])}{il}")
+        lines.append(f"💲 Retail {money(it.get('p'))} (the website shows full price) · rang up <b>$0.01</b> "
+                     f"elsewhere {age_text(lead['days'])}{il}")
         if lead["clearance"]:
             lines.append(f"📍 In clearance, none showing online: {esc(store_names(lead['clearance']))}")
         if lead["inactive"]:
@@ -248,7 +250,8 @@ def area_list_lines(sec, title=None):
                          f"retail {money(it.get('p'))}, may ring <b>$0.01</b> · in clearance at {esc(where)}{il} "
                          f"<code>{esc(it['s'])}</code>")
     if deals:
-        lines.append("🏷 <b>CLEARANCE DEALS</b>: the store's current marked-down price. Not a penny.")
+        lines.append("🏷 <b>CLEARANCE DEALS</b>: the store's current marked-down price, in-store only "
+                     "(the website shows full price). Not a penny.")
         for l in deals:
             it, (best, store) = l["item"], l["marked"][0]
             flag = "⚠️ RECALLED " if sec.get("recalls", {}).get(it["s"], {}).get("status") == "recalled" else ""
