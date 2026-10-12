@@ -156,10 +156,22 @@ PENNY_BADGE = "🪙 <b>PENNY CHANCE</b> · may ring up $0.01"
 DEAL_BADGE = "🏷 <b>CLEARANCE DEAL</b> · marked down, not a penny"
 
 
-def card(lead, note):
+def recall_line(recall, checked):
+    if not recall:
+        return None
+    if recall["status"] == "recalled":
+        return f"⚠️ <b>Recall:</b> {esc(recall['title'])} ({esc(recall['date'])})"
+    if recall["status"] == "clear":
+        return f"✅ No CPSC recall found (checked {esc(checked)})"
+    return "❔ Recall check didn't finish today. Check cpsc.gov/Recalls before reselling."
+
+
+def card(lead, note, recall=None, checked=""):
     """Caption and buttons for one deal card."""
     it = lead["item"]
     lines = [PENNY_BADGE if lead["kind"] == "watch" else DEAL_BADGE]
+    if recall and recall["status"] == "recalled":
+        lines.insert(0, "⚠️ <b>RECALLED: don't buy this to resell</b>")
     if note:
         lines.append(f"<i>{esc(note)}</i>")
     lines.append(f"<b>{esc(it['n'])}</b>")
@@ -182,6 +194,8 @@ def card(lead, note):
             lines.append("📦 Still shows stock: " + esc(", ".join(f"{s['n']} ({q})" for s, q in lead["inactive"][:3])))
         lines.append("👉 Find it on the shelf and scan the box barcode at self-checkout.")
         target = (lead["clearance"] or [s for s, _ in lead["inactive"]])[0]
+    if recall_line(recall, checked):
+        lines.append(recall_line(recall, checked))
     ids = f"🔢 SKU <code>{esc(it['s'])}</code>"
     if it.get("model"):
         ids += f" · Model <code>{esc(it['model'])}</code>"
@@ -193,6 +207,8 @@ def card(lead, note):
         [{"text": "🛒 Home Depot", "url": product_url(it)}, {"text": "💰 eBay sold", "url": ebay_sold_url(it)}],
         [{"text": f"🗺 Directions · {target['n']}", "url": directions_url(target)}],
     ]
+    if recall and recall["status"] == "recalled":
+        buttons.insert(0, [{"text": "⚠️ Read the recall notice", "url": recall["url"]}])
     return caption, buttons
 
 
@@ -223,16 +239,18 @@ def area_list_lines(sec, title=None):
         lines.append(f"🪙 <b>PENNY CHANCES</b>: may ring up $0.01. Scan to find out.{more}")
         for l in watch[:WATCH_LIST_MAX]:
             it = l["item"]
+            flag = "⚠️ RECALLED " if sec.get("recalls", {}).get(it["s"], {}).get("status") == "recalled" else ""
             where = f"{len(l['clearance'])} stores" if len(l["clearance"]) > 1 else (
                 l["clearance"][0]["n"] if l["clearance"] else "in stock, inactive")
             il = f" · IL: {esc(it['il'])}" if it.get("il") else ""
-            lines.append(f"• <a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> {money(it.get('p'))} · "
+            lines.append(f"• {flag}<a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> {money(it.get('p'))} · "
                          f"{esc(where)}{il} <code>{esc(it['s'])}</code>")
     if deals:
         lines.append("🏷 <b>CLEARANCE DEALS</b>: marked-down price, not a penny.")
         for l in deals:
             it, (best, store) = l["item"], l["marked"][0]
-            lines.append(f"• <b>{money(best)}</b> −{round(l['pct'] * 100)}% "
+            flag = "⚠️ RECALLED " if sec.get("recalls", {}).get(it["s"], {}).get("status") == "recalled" else ""
+            lines.append(f"• {flag}<b>{money(best)}</b> −{round(l['pct'] * 100)}% "
                          f"<a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> · {esc(store['n'])} "
                          f"<code>{esc(it['s'])}</code>")
     if not watch and not deals:
@@ -296,6 +314,8 @@ def main():
                     help="config.json; its optional \"telegram\" block names the group and one tab per area")
     ap.add_argument("--setup-topics", action="store_true",
                     help="create one tab per area in the group the bot was just added to, then print the config")
+    ap.add_argument("--no-recall-check", action="store_true",
+                    help="skip checking card items against the CPSC recall database")
     ap.add_argument("--dry-run", action="store_true", help="print the messages instead of sending them")
     args = ap.parse_args()
     if args.setup_topics:
@@ -344,8 +364,17 @@ def main():
     header.append("👇 Tap an area to open its tab." if use_topics else "📌 Every lead for each area is in the pinned list.")
     header_text = "\n".join(header)[:TEXT_LIMIT]
 
+    recalls = {}
+    if not args.no_recall_check:
+        from recall_check import check_items
+        recalls = check_items(board["items"])  # every item, so the pinned list can flag recalls too
+        tally = {s: sum(1 for r in recalls.values() if r["status"] == s) for s in ("clear", "recalled", "unknown")}
+        print(f"telegram_digest: recall check: {tally['clear']} clear, {tally['recalled']} recalled, "
+              f"{tally['unknown']} couldn't be checked", file=sys.stderr)
     for sec in sections:
-        sec["cards"] = [(card(l, n), l["item"].get("img")) for l, n in sec["pennies"] + sec["deals"]]
+        sec["recalls"] = recalls
+        sec["cards"] = [(card(l, n, recalls.get(l["item"]["s"]), board["checked"]), l["item"].get("img"))
+                        for l, n in sec["pennies"] + sec["deals"]]
     n_cards = sum(len(sec["cards"]) for sec in sections)
 
     if args.dry_run:

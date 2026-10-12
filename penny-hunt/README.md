@@ -49,6 +49,17 @@ python3 telegram_digest.py --board new.html --dry-run    # preview without sendi
 
 With `--prev` (the previous board), cards only cover what changed: new items, new or lower clearance prices, and new Illinois reports. Messages are grouped by area, in the order the areas appear in `config.json`, so put the area you're in most first. Clearance and penny prices only apply at the store that has the item. Each area gets up to `--penny-cards` (default 3) penny chances and `--deal-cards` (default 2) clearance deals, and leads at a store within 15 miles rank higher. Cards skip items under `--min-retail` (default $25), but the pinned list still shows them.
 
+### Recall check
+
+Before sending, `telegram_digest.py` checks every item against the CPSC recall database (`recall_check.py`).
+- Each card shows ✅ **No CPSC recall found**, or ⚠️ **RECALLED: don't buy this to resell** with a button to the recall notice.
+- Recalled items are also flagged in the pinned list.
+- An item only counts as recalled when its UPC is listed in a recall, or its model number appears in a recall's text. Short or all-digit model numbers also need the brand named in the same recall.
+
+The CPSC database is slow and sometimes returns empty results, so older recalls come from a saved copy, `recalls_snapshot.json.gz`, and only the last couple of months are downloaded each run. Refresh the saved copy now and then with `python3 recall_check.py --refresh-snapshot`.
+
+If the download runs past 5 minutes, the run moves on, and cards say the recall check didn't finish instead of showing a false "no recall". Use `--no-recall-check` to skip the check.
+
 ### One tab per area (Telegram Topics)
 
 In a Telegram group with **Topics** turned on, each area gets its own tab with its own cards and pinned list. The **General** tab gets the daily summary, with buttons that jump to each area's tab. To set it up:
