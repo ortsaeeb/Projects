@@ -30,6 +30,20 @@ A run of about 95 items across 16 stores makes about 1,500 requests and takes ab
 
 `skus_extra.tsv` is for penny finds the feed doesn't have, for example from [Penny Pinchin' Mom](https://pennypinchinmom.com/home-depot-penny-list/). It has four tab-separated columns: store SKU, name, date last seen, and states.
 
+## Telegram updates
+
+`notify_telegram.py` sends a message read from stdin through your own Telegram bot. The message includes a button that opens the board:
+
+```sh
+echo "3 new leads at Evanston" | python3 notify_telegram.py
+```
+
+It reads two environment variables:
+- `TELEGRAM_BOT_TOKEN`: from @BotFather.
+- `TELEGRAM_CHAT_ID`: your chat id. Message @userinfobot to get it.
+
+Set both in the cloud environment's settings, never in this repo. If they're missing, the script sends nothing and exits with code 3.
+
 ## Reading the results
 
 | Status | What it usually means |
