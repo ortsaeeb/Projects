@@ -19,7 +19,7 @@ Usage:
 """
 import argparse
 import csv
-import http.client
+from http.client import HTTPException
 import json
 import re
 import sys
@@ -67,7 +67,7 @@ def http(url, data=None, headers=None, follow=True):
                 return e.code, e.headers, b""
             if attempt == 2:
                 raise
-        except (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError):
+        except (urllib.error.URLError, HTTPException, ConnectionError, TimeoutError):
             if attempt == 2:
                 raise
         time.sleep(3 * (attempt + 1))
