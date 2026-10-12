@@ -121,6 +121,12 @@ class Bot:
     def edit_topic(self, thread, name):
         self.call("editForumTopic", {"chat_id": self.resolve_chat(), "message_thread_id": thread, "name": name})
 
+    def delete_topic(self, thread):
+        self.call("deleteForumTopic", {"chat_id": self.resolve_chat(), "message_thread_id": thread})
+
+    def close_topic(self, thread):
+        self.call("closeForumTopic", {"chat_id": self.resolve_chat(), "message_thread_id": thread})
+
     def topic_link(self, thread):
         """Link that opens a topic (works for members of the group)."""
         return f"https://t.me/c/{str(self.chat_id).removeprefix('-100')}/{thread}"

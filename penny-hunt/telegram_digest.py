@@ -299,6 +299,205 @@ def list_lines(board, sections):
     return lines + ([""] + gone if gone else [])
 
 
+# ---- Two-tab layout: one 🪙 Pennies tab and one 🏷 Deals tab for all areas ----------------------
+
+def by_area(board, pairs, key=lambda x: x):
+    """Group stores (or (price, store) pairs) by area, in config order."""
+    groups = {}
+    for p in pairs:
+        groups.setdefault(key(p)["r"], []).append(p)
+    return [(a, groups[a["zip"]]) for a in board["areas"] if a["zip"] in groups]
+
+
+def type_card(lead, note, recall, checked, board, short_names):
+    """A card that lists the stores in every area, for the two-tab layout."""
+    it = lead["item"]
+    lines = [PENNY_BADGE if lead["kind"] == "watch" else DEAL_BADGE]
+    if recall and recall["status"] == "recalled":
+        lines.insert(0, "⚠️ <b>RECALLED: don't buy this to resell</b>")
+    if note:
+        lines.append(f"<i>{esc(note)}</i>")
+    lines.append(f"<b>{esc(it['n'])}</b>")
+    il = f" · IL: {esc(it['il'])}" if it.get("il") else ""
+    targets = []
+    if lead["kind"] == "deal":
+        best = lead["marked"][0][0]
+        lines.append(f"💲 <b>{money(best)} in store</b>  <s>{money(it.get('p'))}</s>  −{round(lead['pct'] * 100)}%")
+        lines.append(f"🌐 Website still shows {money(it.get('p'))}. Clearance prices are in-store only.")
+        for area, rows in by_area(board, lead["marked"], key=lambda r: r[1]):
+            low = rows[0][0]
+            at_low = [s for p, s in rows if p == low]
+            more = len(rows) - len(at_low)
+            lines.append(f"📍 <b>{esc(short_names[area['zip']])}</b>: {esc(store_names(at_low, 2))} {money(low)}"
+                         + (f" · {more} more from {money(rows[len(at_low)][0])}" if more else ""))
+            targets.append(at_low[0])
+        lines.append(f"ℹ️ Rang up $0.01 at other stores ({age_text(lead['days'])}{il}), so this price may keep dropping.")
+    else:
+        lines.append(f"💲 Retail {money(it.get('p'))} (the website shows full price) · rang up <b>$0.01</b> "
+                     f"elsewhere {age_text(lead['days'])}{il}")
+        stores = sorted(lead["clearance"] + [s for s, _ in lead["inactive"]], key=lambda s: s["mi"])
+        for area, group in by_area(board, stores):
+            lines.append(f"📍 <b>{esc(short_names[area['zip']])}</b>: {esc(store_names(group))}")
+            targets.append(group[0])
+        if lead["inactive"]:
+            lines.append("📦 Still shows stock: " + esc(", ".join(f"{s['n']} ({q})" for s, q in lead["inactive"][:3])))
+        lines.append("👉 Find it on the shelf and scan the box barcode at self-checkout.")
+    if recall_line(recall, checked):
+        lines.append(recall_line(recall, checked))
+    ids = f"🔢 SKU <code>{esc(it['s'])}</code>"
+    if it.get("model"):
+        ids += f" · Model <code>{esc(it['model'])}</code>"
+    lines.append(ids)
+    caption = "\n".join(lines)
+    if len(caption) > CAPTION_LIMIT:
+        caption = caption[:CAPTION_LIMIT - 1] + "…"
+    buttons = [[{"text": "🛒 Home Depot", "url": product_url(it)}, {"text": "💰 eBay sold", "url": ebay_sold_url(it)}],
+               [{"text": f"🗺 {s['n']}", "url": directions_url(s)} for s in targets[:2]]]
+    if recall and recall["status"] == "recalled":
+        buttons.insert(0, [{"text": "⚠️ Read the recall notice", "url": recall["url"]}])
+    return caption, buttons
+
+
+def type_list_lines(board, leads, kind, recalls, short_names):
+    """Pinned list for the Pennies or Deals tab: each item once, with its stores by area."""
+    recalled = lambda it: "⚠️ RECALLED " if (recalls.get(it["s"]) or {}).get("status") == "recalled" else ""
+    lines = [list_title(board), ""]
+    if kind == "watch":
+        watch = [l for l in leads if l["kind"] == "watch"]
+        more = f" Top {WATCH_LIST_MAX * 2} of {len(watch)}." if len(watch) > WATCH_LIST_MAX * 2 else ""
+        lines.append(f"🪙 <b>PENNY CHANCES</b>: price unknown until you scan. Could be $0.01. "
+                     f"The price shown is regular retail.{more}")
+        for l in watch[:WATCH_LIST_MAX * 2]:
+            it = l["item"]
+            stores = l["clearance"] + [s for s, _ in l["inactive"]]
+            where = " · ".join(f"{short_names[a['zip']]}: {g[0]['n'] if len(g) == 1 else f'{len(g)} stores'}"
+                               for a, g in by_area(board, sorted(stores, key=lambda s: s["mi"])))
+            il = f" · IL: {esc(it['il'])}" if it.get("il") else ""
+            lines.append(f"• {recalled(it)}<a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> · "
+                         f"retail {money(it.get('p'))} · {esc(where)}{il} <code>{esc(it['s'])}</code>")
+        if not watch:
+            lines.append("No penny chances at your stores right now.")
+    else:
+        deals = [l for l in leads if l["kind"] == "deal"]
+        lines.append("🏷 <b>CLEARANCE DEALS</b>: the store's current marked-down price, in-store only "
+                     "(the website shows full price). Not a penny.")
+        for l in deals:
+            it = l["item"]
+            where = " · ".join(f"{short_names[a['zip']]}: {rows[0][1]['n']} {money(rows[0][0])}"
+                               for a, rows in by_area(board, l["marked"], key=lambda r: r[1]))
+            lines.append(f"• {recalled(it)}<b>{money(l['marked'][0][0])}</b> (was {money(it.get('p'))}, "
+                         f"−{round(l['pct'] * 100)}%) <a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> · "
+                         f"{esc(where)} <code>{esc(it['s'])}</code>")
+        if not deals:
+            lines.append("No clearance deals at your stores right now.")
+    return lines
+
+
+def send_by_type(args, board, prev, tg_cfg, cfg, summary):
+    """Two-tab layout: every item once, in the 🪙 Pennies or 🏷 Deals tab, with its stores in each area."""
+    short_names = {a["zip"]: a.get("short") or a["label"] for a in cfg.get("areas", [])}
+    for a in board["areas"]:
+        short_names.setdefault(a["zip"], a["label"])
+    leads = find_leads(board)
+    card_leads = [l for l in leads if (l["item"].get("p") or 0) >= args.min_retail]
+    if prev:
+        prev_items = {it["s"]: it for it in prev["items"]}
+        candidates = [(l, n) for l in card_leads if (n := change_note(l, prev_items))]
+    else:
+        candidates = [(l, None) for l in card_leads]
+    counts_cfg = tg_cfg.get("cards") or {}
+    pennies = [c for c in candidates if c[0]["kind"] == "watch"][:counts_cfg.get("penny", 5)]
+    deals = [c for c in candidates if c[0]["kind"] == "deal"][:counts_cfg.get("deals", 4)]
+
+    recalls = {}
+    if not args.no_recall_check:
+        from recall_check import check_items
+        recalls = check_items(board["items"])
+        tally = {s: sum(1 for r in recalls.values() if r["status"] == s) for s in ("clear", "recalled", "unknown")}
+        print(f"telegram_digest: recall check: {tally['clear']} clear, {tally['recalled']} recalled, "
+              f"{tally['unknown']} couldn't be checked", file=sys.stderr)
+
+    def cards(picked):
+        return [(type_card(l, n, recalls.get(l["item"]["s"]), board["checked"], board, short_names),
+                 l["item"].get("img")) for l, n in picked]
+
+    new = "new " if prev else ""
+    p, d = len(pennies), len(deals)
+    tabs = [("watch", tg_cfg["topics"]["penny"], cards(pennies),
+             f"{p} {new}penny chance{'s' if p != 1 else ''}", PENNY_TAB_NOTE),
+            ("deal", tg_cfg["topics"]["deals"], cards(deals),
+             f"{d} {new}clearance deal{'s' if d != 1 else ''}", DEALS_TAB_NOTE)]
+    header = [f"🔨 <b>Penny Hunt</b> · {esc(board['checked'])}"]
+    if summary:
+        header.append(esc(summary))
+    header.append(f"🪙 {tabs[0][3]} · 🏷 {tabs[1][3]}" if p or d or not prev else "Nothing new since the last update.")
+    header.append("Stores: " + " · ".join(f"{short_names[a['zip']]} area" for a in board["areas"]))
+    header.append("👇 Tap a tab below.")
+    header_text = "\n".join(header)
+
+    if args.dry_run:
+        print("[two tabs: Pennies + Deals]")
+        print(header_text, "\n" + "=" * 40)
+        for kind, _, tab_cards, what, note in tabs:
+            print(f"[tab {'Pennies' if kind == 'watch' else 'Deals'}] {what}")
+            for (caption, buttons), _ in tab_cards:
+                print(caption, "\n  buttons:", " | ".join(b["text"] for row in buttons for b in row), "\n" + "-" * 40)
+            for part in chunk(type_list_lines(board, leads, kind, recalls, short_names)):
+                print(part, "\n" + "=" * 40)
+        if gone_lines(board):
+            print("[General]", "\n".join(gone_lines(board)))
+        print(f"{p + d} cards", file=sys.stderr)
+        return
+
+    from telegram_api import Bot, NotConfigured, TelegramError
+
+    def send_list(bot, lines, thread):
+        first = None
+        for part in chunk(lines):
+            time.sleep(0.4)
+            msg = bot.send_message(part, silent=True, thread=thread)
+            first = first or msg
+        if first:
+            try:
+                bot.pin(first["message_id"], thread=thread)
+            except TelegramError as e:
+                print(f"telegram_digest: couldn't pin the list ({e})", file=sys.stderr)
+
+    try:
+        bot = Bot(chat_id=str(tg_cfg["chat_id"]))
+        if args.list_only:
+            for kind, thread, *_ in tabs:
+                send_list(bot, type_list_lines(board, leads, kind, recalls, short_names), thread)
+            print("telegram_digest: sent and pinned the full lists", file=sys.stderr)
+            return
+        buttons = [[{"text": f"🪙 Pennies ({p})", "url": bot.topic_link(tabs[0][1])},
+                    {"text": f"🏷 Deals ({d})", "url": bot.topic_link(tabs[1][1])}],
+                   [{"text": "📋 Open the full board", "url": args.board_url}]]
+        bot.send_message(header_text, buttons=buttons)
+        for kind, thread, tab_cards, what, note in tabs:
+            time.sleep(0.4)
+            bot.send_message(f"🔨 <b>{esc(board['checked'])}</b> · {what}\n{note}", silent=True, thread=thread)
+            for (caption, btns), img in tab_cards:
+                time.sleep(0.4)
+                try:
+                    if not img:
+                        raise TelegramError("no photo")
+                    bot.send_photo(img, caption, btns, silent=True, thread=thread)
+                except TelegramError:  # photo missing or Telegram couldn't fetch it: send the text alone
+                    bot.send_message(caption, btns, silent=True, thread=thread)
+            send_list(bot, type_list_lines(board, leads, kind, recalls, short_names), thread)
+        if gone_lines(board):
+            time.sleep(0.4)
+            bot.send_message("\n".join(gone_lines(board))[:TEXT_LIMIT], silent=True)
+    except NotConfigured as e:
+        print(f"telegram_digest: not set up, {e}; nothing sent", file=sys.stderr)
+        sys.exit(3)
+    except TelegramError as e:
+        sys.exit(f"telegram_digest: {e}")
+    print(f"telegram_digest: sent header, {p} penny-chance and {d} clearance-deal cards to the Pennies and Deals tabs",
+          file=sys.stderr)
+
+
 def visible_len(text):
     """Length as Telegram counts it: tags and link targets don't count."""
     return len(html.unescape(re.sub(r"<[^>]+>", "", text)))
@@ -331,7 +530,7 @@ def main():
     ap.add_argument("--config", default=str(Path(__file__).resolve().parent / "config.json"),
                     help="config.json; its optional \"telegram\" block names the group and one tab per area")
     ap.add_argument("--setup-topics", action="store_true",
-                    help="create one tab per area in the group the bot was just added to, then print the config")
+                    help="create the Pennies and Deals tabs in the group (removing old tabs), then print the config")
     ap.add_argument("--list-only", action="store_true",
                     help="send and pin only the full list (no header or cards), e.g. to restore a missed list")
     ap.add_argument("--no-recall-check", action="store_true",
@@ -347,6 +546,9 @@ def main():
         ap.error("--board is required")
     board = load_board(args.board)
     prev = load_board(args.prev) if args.prev and Path(args.prev).exists() else None
+    if tg_cfg.get("layout") == "type":
+        summary = Path(args.summary_file).read_text(encoding="utf-8").strip() if args.summary_file else ""
+        return send_by_type(args, board, prev, tg_cfg, cfg, summary)
 
     # One section per area, in config order (the first area is the user's main one).
     sections = []
@@ -518,10 +720,11 @@ def main():
 
 
 def setup_topics(config_path):
-    """Give each area a 🪙 Pennies tab and a 🏷 Deals tab in the group, then print the config block.
+    """Create a fresh 🪙 Pennies tab and 🏷 Deals tab in the group, remove the old tabs, print the config.
 
-    Uses the group already in config.json, or else the group with Topics the bot was added to. An
-    existing one-tab-per-area setup is reused: that tab is renamed to the Pennies tab."""
+    Uses the group already in config.json, or else the group with Topics the bot was added to. Old tabs
+    are deleted when the bot may delete messages; otherwise they're closed and labeled so you can
+    delete them yourself."""
     from telegram_api import Bot, TelegramError
     cfg = json.loads(Path(config_path).read_text(encoding="utf-8"))
     tg = cfg.get("telegram") or {}
@@ -534,34 +737,39 @@ def setup_topics(config_path):
                  "(Manage Topics + Pin Messages), turn on Topics, send any message in the group, "
                  "then run this again within 24 hours.")
     bot.chat_id = chat_id
-    old = {str(k): v for k, v in (tg.get("topics") or {}).items()}
-    gold, green = 16766590, 9367192
-    topics = {}
+    old = []
+    for v in (tg.get("topics") or {}).values():
+        old += [x for x in (v.values() if isinstance(v, dict) else [v]) if isinstance(x, int)]
+    areas = " and ".join(f"{a.get('short') or a['label']} area" for a in cfg["areas"])
+    removed, closed = [], []
     try:
-        for area in cfg["areas"]:
-            zip_code, label = area["zip"], area["label"]
-            ids = tab_ids(old, zip_code)
-            penny_name, deals_name = f"🪙 {label} ({zip_code}) · Pennies", f"🏷 {label} ({zip_code}) · Deals"
-            if ids.get("penny"):
-                bot.edit_topic(ids["penny"], penny_name)
-                penny = ids["penny"]
-            else:
-                penny = bot.create_topic(penny_name, gold)
-            if ids.get("deals") and ids["deals"] != penny:
-                deals = ids["deals"]
-                bot.edit_topic(deals, deals_name)
-            else:
-                deals = bot.create_topic(deals_name, green)
-            topics[zip_code] = {"penny": penny, "deals": deals}
-            bot.send_message(f"{PENNY_TAB_NOTE}\nStores around {esc(zip_code)} only. The full penny list stays "
-                             "pinned here.", thread=penny)
-            bot.send_message(f"{DEALS_TAB_NOTE}\nStores around {esc(zip_code)} only. The full deals list stays "
-                             "pinned here.", thread=deals)
-        bot.send_message("🔨 <b>Penny Hunt</b> now has a 🪙 Pennies tab and a 🏷 Deals tab for each area. "
-                         "Each morning a summary lands here with a button for every tab.")
+        penny = bot.create_topic("🪙 Pennies", 16766590)
+        deals = bot.create_topic("🏷 Deals", 9367192)
+        bot.send_message(f"{PENNY_TAB_NOTE}\nEach item shows up once, with the stores in the {esc(areas)} that have "
+                         "it. The full penny list stays pinned here.", thread=penny)
+        bot.send_message(f"{DEALS_TAB_NOTE}\nEach item shows up once, with its price at your stores in the "
+                         f"{esc(areas)}. The full deals list stays pinned here.", thread=deals)
+        for thread in dict.fromkeys(old):
+            try:
+                bot.delete_topic(thread)
+                removed.append(thread)
+            except TelegramError:
+                try:
+                    bot.edit_topic(thread, "🗑 Old tab (you can delete it)")
+                    bot.close_topic(thread)
+                except TelegramError:
+                    pass
+                closed.append(thread)
+        note = (f"\nThe {len(closed)} old tabs are closed and marked 🗑. Long-press each one and tap Delete to "
+                "remove it." if closed else "")
+        bot.send_message("🔨 <b>Penny Hunt</b> now has two tabs: 🪙 <b>Pennies</b> and 🏷 <b>Deals</b>. Each item "
+                         "appears once, with the stores near you that have it. Each morning a summary lands here "
+                         "with a button for each tab." + note)
     except TelegramError as e:
         sys.exit(f"telegram_digest: {e}. Make sure the bot is an admin with Manage Topics and Pin Messages.")
-    print(json.dumps({"telegram": {"chat_id": chat_id, "group": title, "topics": topics}}, ensure_ascii=False))
+    print(json.dumps({"telegram": {"chat_id": chat_id, "group": title, "layout": "type",
+                                   "topics": {"penny": penny, "deals": deals}},
+                      "old_tabs": {"deleted": removed, "closed": closed}}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
