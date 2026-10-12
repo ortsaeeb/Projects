@@ -1,0 +1,8 @@
+{
+  "areas": [
+    {"zip": "61761", "radius": 50, "label": "Bloomington-Normal"},
+    {"zip": "60645", "radius": 12, "label": "Chicago North"}
+  ],
+  "max_age_days": 45,
+  "extra_skus": "skus_extra.tsv"
+}

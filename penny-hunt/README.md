@@ -1,12 +1,12 @@
 # Penny Hunt
 
-Checks Home Depot items that shoppers have reported ringing up at $0.01 against the stores near you. For each store and item it reports:
+Checks the latest Home Depot penny reports against the stores near you, and builds the Penny Hunt Board page from the results.
 
-- the store's status for the item: `CLEARANCE`, `INACTIVE`, `DELETED` or `ACTIVE`
-- the in-store quantity the website shows
-- any store clearance price
-
-The output is a CSV of leads ranked for each store.
+Each run:
+1. Pulls recent $0.01 reports from [PennyCentral's penny list](https://www.pennycentral.com/penny-list), plus any SKUs added by hand in `skus_extra.tsv`.
+2. Finds the Home Depot stores around each area in `config.json`.
+3. Checks every item at every store: the store's status (`CLEARANCE`, `INACTIVE`, `DELETED` or `ACTIVE`), the in-store quantity the website shows, and any store clearance price.
+4. Writes a CSV of leads ranked by store. With `--board`, it also writes the board page.
 
 A penny price never appears online. Treat every lead as a reason to go look, then confirm by scanning the product's UPC at self-checkout.
 
@@ -15,23 +15,20 @@ A penny price never appears online. Treat every lead as a reason to go look, the
 Needs Python 3.9+ and nothing else.
 
 ```sh
-python3 penny_scan.py --zip 61761 --zip 60645 --radius 10
+python3 penny_scan.py                                   # leads CSV only
+python3 penny_scan.py --board penny-hunt-board.html     # CSV + board page
 ```
 
-- `--radius` is the store search radius in miles. Ten miles around 60645 covers about 11 Chicago-area stores. Around 61761 you need about 50 to also reach Peoria and Champaign.
-- `--skus` points at the list of SKUs to check (default `skus.tsv`).
-- `--out` sets the CSV path (default `penny_leads.csv`).
+A run of about 95 items across 16 stores makes about 1,500 requests and takes about 6 minutes. A few runs a week is plenty.
 
-A run of about 100 SKUs across 15 stores makes about 1,500 requests and takes about 5 minutes. Running it once a week is plenty.
+## Settings
 
-## Refresh the SKU list
+`config.json`:
+- `areas`: the ZIP codes to search around, with a radius in miles and a label for the board. A 50-mile radius around 61761 reaches Normal, Peoria and Champaign. A 12-mile radius around 60645 covers 13 Chicago-area stores.
+- `max_age_days`: drop reports last seen longer ago than this.
+- `extra_skus`: the file of hand-added SKUs.
 
-`skus.tsv` has four tab-separated columns: SKU, name, where and when it was reported, and states. To refresh it, copy recent finds from:
-
-- [PennyCentral penny list](https://www.pennycentral.com/penny-list)
-- [Penny Pinchin' Mom](https://pennypinchinmom.com/home-depot-penny-list/)
-
-Prefer recent reports, and especially Illinois ones.
+`skus_extra.tsv` is for penny finds the feed doesn't have, for example from [Penny Pinchin' Mom](https://pennypinchinmom.com/home-depot-penny-list/). It has four tab-separated columns: store SKU, name, date last seen, and states.
 
 ## Reading the results
 

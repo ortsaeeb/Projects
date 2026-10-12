@@ -1,0 +1,552 @@
+<title>Penny Hunt Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one working column. Sticky store picker and tabs on top, ranked item rows below, profit tracker in its own tab. */
+:root {
+  --bg: #EDF0EE;
+  --surface: #FFFFFF;
+  --ink: #1B2320;
+  --muted: #5A6661;
+  --line: #D2D9D5;
+  --accent: #1E6B4D;
+  --accent-ink: #FFFFFF;
+  --tag: #F6D842;
+  --tag-ink: #1D1A0C;
+  --penny: #A8642C;
+  --warn: #B0431C;
+  --chip: #E3E8E5;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121715; --surface: #1B2320; --ink: #E5EBE8; --muted: #98A6A0; --line: #2C3733;
+    --accent: #4DB98A; --accent-ink: #0E1512; --tag: #E8C931; --tag-ink: #1D1A0C; --penny: #D99A62; --warn: #E2805C; --chip: #26302C;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121715; --surface: #1B2320; --ink: #E5EBE8; --muted: #98A6A0; --line: #2C3733;
+  --accent: #4DB98A; --accent-ink: #0E1512; --tag: #E8C931; --tag-ink: #1D1A0C; --penny: #D99A62; --warn: #E2805C; --chip: #26302C;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px; display: grid; gap: 20px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing: 0.01em; text-wrap: balance; margin: 0; line-height: 1.1; }
+h1 { font-size: clamp(30px, 6vw, 42px); }
+h2 { font-size: 24px; }
+h3 { font-size: 19px; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.mono { font-family: var(--font-mono); font-size: 12.5px; }
+.num { font-variant-numeric: tabular-nums; }
+header.top { display: grid; gap: 6px; }
+.eyebrow { font-family: var(--font-display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-size: 13px; color: var(--penny); }
+
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 8px; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: transparent; color: var(--ink); font: 600 14px var(--font-body); padding: 7px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+select, input, textarea { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-width: 0; }
+select { max-width: 100%; }
+button.btn { font: 600 14px var(--font-body); border-radius: 6px; padding: 7px 12px; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.btn.ghost { background: transparent; }
+button.btn.tiny { font-size: 12.5px; padding: 3px 8px; }
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a { color: var(--accent); }
+
+.storecard { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 2px; }
+
+.section { display: grid; gap: 10px; }
+.section-head { display: grid; gap: 4px; }
+.list { display: grid; gap: 8px; }
+.item { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; align-items: start; }
+.item .name { font-weight: 600; font-size: 15.5px; }
+.item .meta { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 13px; color: var(--muted); }
+.item .side { display: grid; justify-items: end; gap: 6px; text-align: right; }
+.item .full { grid-column: 1 / -1; min-width: 0; }
+@media (max-width: 560px) { .item { grid-template-columns: minmax(0, 1fr); } .item .side { justify-items: start; text-align: left; } }
+
+.tag { display: inline-flex; align-items: baseline; gap: 6px; background: var(--tag); color: var(--tag-ink); font-family: var(--font-display); font-weight: 700; font-size: 20px; padding: 2px 10px 2px 14px; border-radius: 3px 6px 6px 3px; position: relative; }
+.tag::before { content: ""; position: absolute; left: 5px; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%; background: var(--surface); }
+.tag small { font-family: var(--font-body); font-weight: 600; font-size: 12px; }
+.was { text-decoration: line-through; color: var(--muted); font-size: 13px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; background: var(--chip); color: var(--ink); border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip.il { background: var(--penny); color: var(--surface); }
+.chip.hot { border: 1px solid var(--penny); background: transparent; color: var(--penny); }
+.chip.ok { background: var(--accent); color: var(--accent-ink); }
+.chip.bad { background: var(--warn); color: var(--surface); }
+.penny { color: var(--penny); font-weight: 600; }
+.sku { font-family: var(--font-mono); font-size: 12.5px; background: var(--chip); border: 0; border-radius: 4px; padding: 1px 6px; color: var(--ink); cursor: pointer; }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.statusgrid { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 6px; }
+.st { font-size: 12px; padding: 1px 7px; border-radius: 4px; border: 1px solid var(--line); white-space: nowrap; }
+.st.C { border-color: var(--penny); }
+.st b { font-weight: 600; }
+
+.logform { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.logform input[type="number"] { width: 90px; }
+
+.legend { display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); font-size: 13.5px; }
+.legend div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+
+.notice { border-left: 3px solid var(--penny); padding: 8px 12px; background: var(--surface); border-radius: 0 8px 8px 0; font-size: 14px; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.kpi .v { font-family: var(--font-display); font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.kpi .l { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.pos { color: var(--accent); } .neg { color: var(--warn); }
+
+form.flip { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+form.flip label { display: grid; gap: 3px; font-size: 12.5px; color: var(--muted); font-weight: 600; min-width: 0; }
+form.flip label.wide { grid-column: span 2; }
+@media (max-width: 420px) { form.flip label.wide { grid-column: auto; } }
+form.flip .actions { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: 0; }
+.empty { padding: 18px; color: var(--muted); text-align: center; }
+ol.steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 14px; z-index: 20; }
+@media (prefers-reduced-motion: no-preference) { .item { transition: border-color .15s; } .item:hover { border-color: var(--muted); } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <span class="eyebrow">Clearance &amp; penny hunting</span>
+    <h1>Penny Hunt Board</h1>
+    <p class="muted">Home Depot stores near <span id="areasLine"></span>. Store status checked <span id="checked"></span> against <span id="itemCount"></span> items shoppers reported at $0.01 in the last few weeks (reports from <a href="https://www.pennycentral.com/penny-list" target="_blank" rel="noopener">PennyCentral</a>).</p>
+  </header>
+
+  <div class="bar">
+    <div class="row">
+      <div class="seg" role="group" aria-label="Area" id="areaSeg"></div>
+      <select id="storeSel" aria-label="Store"></select>
+    </div>
+    <div class="seg" role="tablist" aria-label="Sections">
+      <button type="button" id="tab-hunt" aria-pressed="true">Hunt list</button>
+      <button type="button" id="tab-track" aria-pressed="false">Profit tracker</button>
+      <button type="button" id="tab-how" aria-pressed="false">How to scan</button>
+    </div>
+  </div>
+
+  <main id="view-hunt" class="section" style="gap:22px">
+    <div id="storeInfo"></div>
+    <section class="section" id="sec-scans" hidden>
+      <div class="section-head"><h2>Your scan log</h2><p class="muted small">What you recorded in stores. Newest first.</p></div>
+      <div class="list" id="scanList"></div>
+    </section>
+    <section class="section">
+      <div class="section-head">
+        <h2>Marked down here now</h2>
+        <p class="muted small">This store's system shows a clearance price. These are deep discounts even if they never reach a penny. The in-store tag can differ.</p>
+      </div>
+      <div class="list" id="mdList"></div>
+    </section>
+    <section class="section">
+      <div class="section-head">
+        <h2>Penny watch: scan these</h2>
+        <p class="muted small">Rang up at $0.01 somewhere else recently and set to clearance or inactive at this store. If you find one on a shelf, scan its barcode at self-checkout. Ranked by retail value, how recent the report is, and Illinois sightings.</p>
+      </div>
+      <div class="list" id="watchList"></div>
+    </section>
+    <section class="section">
+      <div class="section-head">
+        <h2>Gone from the website: look on shelves</h2>
+        <p class="muted small">These SKUs were reported at a penny but Home Depot's site returned nothing for them, so stock can't be checked online. Any you spot in a store are worth a scan.</p>
+      </div>
+      <div class="list" id="goneList"></div>
+    </section>
+  </main>
+
+  <main id="view-track" class="section" hidden>
+    <div class="section-head">
+      <h2>Profit tracker</h2>
+      <p class="muted small">Log what you buy and what it sells for. Entries are saved with this page, so they're here next time you open it.</p>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <form class="flip" id="flipForm" autocomplete="off">
+      <label class="wide">Item<input id="f-item" required placeholder="Milwaukee PACKOUT 19.5 in. cabinet"></label>
+      <label>SKU<input id="f-sku" placeholder="1007-712-596"></label>
+      <label>Store<select id="f-store"></select></label>
+      <label>Bought on<input id="f-date" type="date"></label>
+      <label>Qty<input id="f-qty" type="number" min="1" step="1" value="1"></label>
+      <label>Cost each ($)<input id="f-cost" type="number" min="0" step="0.01" placeholder="0.01"></label>
+      <label>Status<select id="f-status"><option value="holding">Holding</option><option value="listed">Listed</option><option value="sold">Sold</option></select></label>
+      <label>Sold where<input id="f-where" placeholder="FB Marketplace"></label>
+      <label>Sold for, total ($)<input id="f-sold" type="number" min="0" step="0.01"></label>
+      <label>Fees + shipping ($)<input id="f-fees" type="number" min="0" step="0.01" value="0"></label>
+      <div class="actions">
+        <button class="btn primary" type="submit" id="f-save">Add to tracker</button>
+        <button class="btn ghost" type="button" id="f-cancel" hidden>Cancel edit</button>
+        <span class="muted small" id="f-msg"></span>
+      </div>
+    </form>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Item</th><th>Store</th><th>Bought</th><th class="r">Qty</th><th class="r">Cost</th><th>Status</th><th class="r">Sold for</th><th class="r">Fees</th><th class="r">Profit</th><th></th></tr></thead>
+      <tbody id="flipRows"></tbody>
+    </table></div>
+  </main>
+
+  <main id="view-how" class="section" hidden>
+    <div class="section-head"><h2>How to scan</h2></div>
+    <ol class="steps">
+      <li>Pick a store above and walk its clearance endcaps, garden center, seasonal aisle and overhead racks for items on these lists.</li>
+      <li>In the Home Depot app with that store selected, an item that shows <b>out of stock</b> or <b>not available</b> while it's sitting on the shelf is the strongest penny sign.</li>
+      <li>Scan the <b>product's own UPC barcode</b> at self-checkout. Don't scan the yellow clearance sticker. That can call an associate over.</li>
+      <li>$0.01: buy it. Any other price: decide if the clearance price is still a good flip, otherwise leave it.</li>
+      <li>If an associate says penny items can't be sold, accept it politely. Stores can refuse, and staying welcome matters more than one item.</li>
+      <li>Record each scan with <b>Log scan</b>. Over a few weeks you'll learn which stores penny and which pull items early.</li>
+      <li>Before you list anything for sale, look it up on <a href="https://www.cpsc.gov/Recalls" target="_blank" rel="noopener">cpsc.gov/Recalls</a>. Selling a recalled product is illegal.</li>
+    </ol>
+    <h3>What the store statuses mean</h3>
+    <div class="legend">
+      <div><b>Clearance</b>: the store's system has the item in clearance. With no stock showing, the app says it's unavailable, which is the usual penny pattern.</div>
+      <div><b>Inactive</b>: not a regular item at this store anymore. If stock still shows, scan it.</div>
+      <div><b>Deleted</b>: removed from this store's system. Usually already pulled, but leftovers do turn up.</div>
+      <div><b>Active</b>: normal stock at normal price. Left off these lists.</div>
+    </div>
+    <p class="muted small">These meanings come from how the statuses behave, not from Home Depot. A penny price never shows online, so every item here has to be confirmed by scanning it in the store.</p>
+  </main>
+</div>
+
+<script id="hunt-data" type="application/json">__DATA__</script>
+<script>
+(function () {
+  const D = JSON.parse(document.getElementById('hunt-data').textContent);
+  const $ = (id) => document.getElementById(id);
+  const storeById = Object.fromEntries(D.stores.map(s => [s.id, s]));
+  const money = (v) => v == null || isNaN(v) ? '—' : '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtSku = (s) => s.length === 10 ? s.slice(0, 4) + '-' + s.slice(4, 7) + '-' + s.slice(7) : (s.length === 6 ? s.slice(0, 3) + '-' + s.slice(3) : s);
+  const esc = (t) => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const STATUS = { C: 'Clearance', d: 'Deleted', i: 'Inactive', A: 'Active', '?': 'Unknown' };
+  const RESULT = { penny: 'Rang up $0.01', clearance: 'Clearance price', full: 'Full price', notfound: 'Not on shelf', refused: 'Store refused' };
+
+  function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+  const areaZips = D.areas.map(a => a.zip);
+  let region = load('ph-region');
+  if (!areaZips.includes(region)) region = areaZips[areaZips.length - 1];
+  const dayMs = 86400000;
+  for (const it of D.items) {
+    const age = it.seen ? Math.round((Date.parse(D.checkedISO) - Date.parse(it.seen)) / dayMs) : 99;
+    it.age = age;
+    it.rec = age <= 2 ? 2 : age <= 10 ? 1 : 0;
+  }
+  let storeId = load('ph-store') || 'all';
+  let tab = load('ph-tab') || 'hunt';
+  let scans = [];
+  let flips = [];
+  let db = null;
+  let canWrite = true;
+  let editingId = null;
+
+  $('checked').textContent = D.checked;
+  $('itemCount').textContent = D.items.length;
+  $('areasLine').textContent = D.areas.map(a => a.zip + ' (' + a.label + ')').join(' and ');
+  $('areaSeg').innerHTML = D.areas.map(a => `<button type="button" data-area="${a.zip}" aria-pressed="false">${esc(a.label)}</button>`).join('');
+
+  function toast(msg) {
+    const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2200);
+  }
+
+  function scopeStores() {
+    const rs = D.stores.filter(s => s.r === region);
+    if (storeId !== 'all' && storeById[storeId] && storeById[storeId].r === region) return [storeById[storeId]];
+    return rs;
+  }
+
+  function renderControls() {
+    for (const b of $('areaSeg').querySelectorAll('button')) b.setAttribute('aria-pressed', b.dataset.area === region);
+    const rs = D.stores.filter(s => s.r === region);
+    if (storeId !== 'all' && !rs.some(s => s.id === storeId)) storeId = 'all';
+    $('storeSel').innerHTML = '<option value="all">All ' + rs.length + ' stores in this area</option>' +
+      rs.map(s => `<option value="${s.id}">${esc(s.n)} · ${s.mi} mi</option>`).join('');
+    $('storeSel').value = storeId;
+    for (const t of ['hunt', 'track', 'how']) {
+      $('tab-' + t).setAttribute('aria-pressed', tab === t);
+      $('view-' + t).hidden = tab !== t;
+    }
+  }
+
+  function storeInfo() {
+    const sc = scopeStores();
+    if (sc.length === 1) {
+      const s = sc[0];
+      return `<div class="storecard"><h3>${esc(s.n)} <span class="mono muted">#${s.id}</span></h3>
+        <span class="small">${esc(s.a)} · <span class="num">${esc(s.ph)}</span> · opens ${esc(s.h.split('–')[0])}, closes ${esc(s.h.split('–')[1])} (Mon–Sat)</span>
+        <span class="small muted">${s.mi} mi from ${s.r}. Early morning, before restocking, is the best time to look.</span></div>`;
+    }
+    return `<p class="muted small">Showing all ${sc.length} stores in this area. Pick one store to see its address and a list for just that store.</p>`;
+  }
+
+  function lastScan(sku, sids) {
+    return scans.find(s => s.sku === sku && sids.includes(s.storeId));
+  }
+
+  function skuBtn(s) { return `<button class="sku" type="button" data-copy="${s}" title="Copy SKU">${fmtSku(s)}</button>`; }
+
+  function statusGrid(it, sc) {
+    return `<div class="statusgrid">` + sc.map(s => {
+      const v = it.per && it.per[s.id]; if (!v) return '';
+      const [c, q, clr] = v;
+      return `<span class="st ${c}"><b>${esc(s.n)}</b>: ${STATUS[c]}${q > 0 ? ', ' + q + ' in stock' : ''}${clr ? ', ' + money(clr) : ''}</span>`;
+    }).join('') + `</div>`;
+  }
+
+  function logForm(it) {
+    if (!db || !canWrite) return '';
+    const sc = scopeStores();
+    const opts = sc.map(s => `<option value="${s.id}">${esc(s.n)}</option>`).join('');
+    return `<details class="full"><summary>Log scan</summary><form class="logform" data-sku="${it.s}">
+      ${sc.length > 1 ? `<select name="store" aria-label="Store">${opts}</select>` : `<input type="hidden" name="store" value="${sc[0].id}">`}
+      <select name="result" aria-label="Result">${Object.entries(RESULT).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+      <input name="price" type="number" step="0.01" min="0" placeholder="Price" aria-label="Price at register">
+      <button class="btn tiny primary" type="submit">Save</button></form></details>`;
+  }
+
+  function ageText(it) {
+    if (!it.seen) return 'date unknown';
+    return it.age <= 0 ? 'today' : it.age === 1 ? 'yesterday' : it.age + ' days ago';
+  }
+  function reportLine(it) {
+    const chips = [];
+    if (it.il) chips.push(`<span class="chip il">IL: ${esc(it.il)}</span>`);
+    if (it.rec === 2) chips.push('<span class="chip hot">Reported in the last 2 days</span>');
+    const st = (it.st || '').split(' ').filter(Boolean);
+    const stText = st.length > 5 ? st.slice(0, 5).join(' ') + ' +' + (st.length - 5) + ' more' : st.join(' ');
+    return `<span class="penny">Last $0.01 report ${ageText(it)}</span>` +
+      (stText ? `<span>States: ${esc(stText)}</span>` : '') + chips.join('');
+  }
+
+  function scanChip(it, sc) {
+    const l = lastScan(it.s, sc.map(s => s.id));
+    if (!l) return '';
+    const cls = l.result === 'penny' ? 'ok' : (l.result === 'refused' ? 'bad' : '');
+    return `<span class="chip ${cls}">You: ${RESULT[l.result]}${l.price != null ? ' ' + money(l.price) : ''} · ${esc(storeById[l.storeId]?.n || '')}</span>`;
+  }
+
+  function render() {
+    renderControls();
+    $('storeInfo').innerHTML = storeInfo();
+    const sc = scopeStores();
+    const sids = sc.map(s => s.id);
+    const listed = D.items.filter(it => it.per);
+
+    // Markdowns
+    const md = [];
+    for (const it of listed) {
+      const hits = sids.map(id => [id, it.per[id]]).filter(([, v]) => v && v[2] && v[0] !== 'A');
+      if (!hits.length || !it.p) continue;
+      const best = Math.min(...hits.map(([, v]) => v[2]));
+      const pct = 1 - best / it.p;
+      if (pct < 0.2) continue;
+      md.push({ it, hits, best, pct });
+    }
+    md.sort((a, b) => b.pct - a.pct || b.it.p - a.it.p);
+    $('mdList').innerHTML = md.length ? md.map(({ it, hits, best, pct }) => {
+      const at = hits.filter(([, v]) => v[2] === best).map(([id]) => storeById[id].n);
+      const stock = hits.reduce((n, [, v]) => n + (v[1] > 0 ? v[1] : 0), 0);
+      return `<article class="item">
+        <div style="min-width:0;display:grid;gap:4px">
+          <div class="name">${esc(it.n)}</div>
+          <div class="meta">${skuBtn(it.s)}<span>${sc.length > 1 ? 'Lowest at ' + esc(at.join(', ')) : ''}</span>${stock ? `<span>${stock} in stock</span>` : '<span>No stock showing online</span>'}</div>
+          <div class="meta">${reportLine(it)}${scanChip(it, sc)}</div>
+          ${sc.length > 1 ? `<details><summary>Price at each store</summary>${statusGrid(it, sc.filter(s => it.per[s.id] && it.per[s.id][2]))}</details>` : ''}
+        </div>
+        <div class="side"><span class="tag">${money(best)} <small>${Math.round(pct * 100)}% off</small></span><span class="was num">${money(it.p)}</span></div>
+        ${logForm(it)}
+      </article>`;
+    }).join('') : '<p class="empty">No clearance prices showing at this store for items on the penny lists.</p>';
+
+    // Watch list
+    const mdSkus = new Set(md.map(m => m.it.s));
+    const watch = [];
+    for (const it of listed) {
+      if (mdSkus.has(it.s)) continue;
+      const vals = sids.map(id => it.per[id]).filter(Boolean);
+      const nC = vals.filter(v => v[0] === 'C').length;
+      const nIstock = vals.filter(v => v[0] === 'i' && v[1] > 0).length;
+      if (!nC && !nIstock) continue;
+      const stock = vals.reduce((n, v) => n + (v[0] !== 'A' && v[1] > 0 ? v[1] : 0), 0);
+      const score = (it.p >= 150 ? 3 : it.p >= 50 ? 2 : 1) + it.rec * 1.5 + (it.il ? 2 : 0) + (stock ? 1 : 0);
+      watch.push({ it, nC, nIstock, stock, score, n: vals.length });
+    }
+    watch.sort((a, b) => b.score - a.score || b.it.p - a.it.p);
+    $('watchList').innerHTML = watch.length ? watch.map(({ it, nC, nIstock, stock, n }) => {
+      const where = sc.length > 1 ? `Clearance at ${nC} of ${n} stores${nIstock ? `, inactive with stock at ${nIstock}` : ''}` :
+        (nC ? 'Clearance status here' : 'Inactive here');
+      return `<article class="item">
+        <div style="min-width:0;display:grid;gap:4px">
+          <div class="name">${esc(it.n)}</div>
+          <div class="meta">${skuBtn(it.s)}<span>${where}</span>${stock ? `<span class="chip">${stock} still showing in stock</span>` : ''}</div>
+          <div class="meta">${reportLine(it)}${scanChip(it, sc)}</div>
+          ${sc.length > 1 ? `<details><summary>Status at each store</summary>${statusGrid(it, sc)}</details>` : ''}
+        </div>
+        <div class="side"><span class="num" style="font-weight:600">${money(it.p)}</span><span class="muted small">retail online</span></div>
+        ${logForm(it)}
+      </article>`;
+    }).join('') : '<p class="empty">Nothing on the penny lists is in clearance here.</p>';
+
+    // Gone online
+    const gone = D.items.filter(it => !it.per).sort((a, b) => (!!b.il - !!a.il) || (a.age - b.age));
+    $('goneList').innerHTML = gone.map(it => `<article class="item">
+        <div style="min-width:0;display:grid;gap:4px">
+          <div class="name">${esc(it.n)}</div>
+          <div class="meta">${skuBtn(it.s)}${reportLine(it)}${scanChip(it, sc)}</div>
+        </div>
+        <div class="side"></div>
+        ${logForm(it)}
+      </article>`).join('');
+
+    // Scan log
+    const mine = scans.filter(s => sids.includes(s.storeId)).slice(0, 12);
+    $('sec-scans').hidden = !mine.length;
+    $('scanList').innerHTML = mine.map(s => `<div class="item" style="grid-template-columns:minmax(0,1fr) auto">
+      <div style="min-width:0"><div class="name">${esc(s.name)}</div><div class="meta"><span>${esc(storeById[s.storeId]?.n || s.storeId)}</span><span>${new Date(s.ts).toLocaleString()}</span></div></div>
+      <div class="side"><span class="chip ${s.result === 'penny' ? 'ok' : s.result === 'refused' ? 'bad' : ''}">${RESULT[s.result]}${s.price != null ? ' ' + money(s.price) : ''}</span></div></div>`).join('');
+
+    renderTracker();
+  }
+
+  // Tracker
+  function profitOf(f) {
+    if (f.status !== 'sold' || f.soldFor == null) return null;
+    return f.soldFor - (f.fees || 0) - (f.costEach || 0) * (f.qty || 1);
+  }
+  function renderTracker() {
+    const spent = flips.reduce((n, f) => n + (f.costEach || 0) * (f.qty || 1), 0);
+    const sold = flips.filter(f => f.status === 'sold');
+    const revenue = sold.reduce((n, f) => n + (f.soldFor || 0) - (f.fees || 0), 0);
+    const soldCost = sold.reduce((n, f) => n + (f.costEach || 0) * (f.qty || 1), 0);
+    const profit = revenue - soldCost;
+    const holding = flips.filter(f => f.status !== 'sold').reduce((n, f) => n + (f.qty || 1), 0);
+    $('kpis').innerHTML = [
+      ['Spent on stock', money(spent), ''],
+      ['Sales after fees', money(revenue), ''],
+      ['Profit on sold items', money(profit), profit > 0 ? 'pos' : profit < 0 ? 'neg' : ''],
+      ['Units not sold yet', String(holding), '']
+    ].map(([l, v, c]) => `<div class="kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div></div>`).join('');
+    if (!db) {
+      $('flipRows').innerHTML = `<tr><td colspan="10" class="empty">Saving isn't available in this view. Open the page from claude.ai while signed in to use the tracker.</td></tr>`;
+      $('f-save').disabled = true; return;
+    }
+    $('f-save').disabled = !canWrite;
+    $('flipRows').innerHTML = flips.length ? flips.map(f => {
+      const p = profitOf(f);
+      return `<tr><td>${esc(f.item)}${f.sku ? `<br><span class="mono muted">${esc(f.sku)}</span>` : ''}</td>
+        <td>${esc(storeById[f.storeId]?.n || '')}</td><td class="num">${esc(f.date || '')}</td>
+        <td class="r">${f.qty || 1}</td><td class="r">${money(f.costEach)}</td>
+        <td>${f.status === 'sold' ? '<span class="chip ok">Sold</span>' : f.status === 'listed' ? '<span class="chip">Listed</span>' : '<span class="chip">Holding</span>'}${f.where ? `<br><span class="small muted">${esc(f.where)}</span>` : ''}</td>
+        <td class="r">${money(f.soldFor)}</td><td class="r">${money(f.fees)}</td>
+        <td class="r ${p > 0 ? 'pos' : p < 0 ? 'neg' : ''}">${p == null ? '—' : money(p)}</td>
+        <td>${canWrite ? `<button class="btn tiny" type="button" data-edit="${f._id}">Edit</button> <button class="btn tiny ghost" type="button" data-del="${f._id}">Delete</button>` : ''}</td></tr>`;
+    }).join('') : `<tr><td colspan="10" class="empty">No items yet. Add your first buy above, even a $0.01 one.</td></tr>`;
+  }
+
+  function num(id) { const v = $(id).value; return v === '' ? null : Number(v); }
+  function resetForm() {
+    $('flipForm').reset(); $('f-qty').value = 1; $('f-fees').value = 0;
+    $('f-date').value = new Date().toISOString().slice(0, 10);
+    editingId = null; $('f-save').textContent = 'Add to tracker'; $('f-cancel').hidden = true;
+  }
+
+  $('flipForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!db) return;
+    const body = {
+      item: $('f-item').value.trim(), sku: $('f-sku').value.trim(), storeId: $('f-store').value,
+      date: $('f-date').value, qty: num('f-qty') || 1, costEach: num('f-cost') ?? 0,
+      status: $('f-status').value, where: $('f-where').value.trim(), soldFor: num('f-sold'), fees: num('f-fees') ?? 0,
+      updatedAt: Date.now()
+    };
+    if (!body.item) { $('f-msg').textContent = 'Add an item name first.'; return; }
+    $('f-save').disabled = true;
+    try {
+      if (editingId) { await db.collection('flips').doc(editingId).set({ ...body, createdAt: flips.find(f => f._id === editingId)?.createdAt || Date.now() }); toast('Saved'); }
+      else { await db.collection('flips').add({ ...body, createdAt: Date.now() }); toast('Added to tracker'); }
+      resetForm(); $('f-msg').textContent = '';
+    } catch (err) {
+      if (err && err.code === 'invalid_argument') { canWrite = false; $('f-msg').textContent = 'You can view this tracker but not change it.'; }
+      else if (err && err.code === 'quota_exceeded') $('f-msg').textContent = 'The tracker is full. Delete old entries to add new ones.';
+      else $('f-msg').textContent = 'Could not save. Check your connection and try again.';
+    } finally { $('f-save').disabled = !canWrite; }
+  });
+  $('f-cancel').addEventListener('click', resetForm);
+
+  document.addEventListener('click', async (e) => {
+    const t = e.target.closest('button'); if (!t) return;
+    if (t.dataset.copy) {
+      const v = t.dataset.copy;
+      try { await navigator.clipboard.writeText(v); toast('Copied SKU ' + fmtSku(v)); }
+      catch (err) { const r = document.createRange(); r.selectNodeContents(t); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+      return;
+    }
+    if (t.dataset.edit) {
+      const f = flips.find(x => x._id === t.dataset.edit); if (!f) return;
+      editingId = f._id;
+      $('f-item').value = f.item || ''; $('f-sku').value = f.sku || ''; $('f-store').value = f.storeId || '';
+      $('f-date').value = f.date || ''; $('f-qty').value = f.qty || 1; $('f-cost').value = f.costEach ?? '';
+      $('f-status').value = f.status || 'holding'; $('f-where').value = f.where || ''; $('f-sold').value = f.soldFor ?? ''; $('f-fees').value = f.fees ?? 0;
+      $('f-save').textContent = 'Save changes'; $('f-cancel').hidden = false; $('f-item').focus();
+      return;
+    }
+    if (t.dataset.del) {
+      if (t.dataset.armed !== '1') { t.dataset.armed = '1'; t.textContent = 'Confirm delete'; setTimeout(() => { t.dataset.armed = ''; t.textContent = 'Delete'; }, 3000); return; }
+      try { await db.collection('flips').doc(t.dataset.del).delete(); toast('Deleted'); } catch (err) { toast('Could not delete'); }
+    }
+  });
+
+  document.addEventListener('submit', async (e) => {
+    const f = e.target.closest('form.logform'); if (!f) return;
+    e.preventDefault();
+    const sku = f.dataset.sku; const it = D.items.find(x => x.s === sku);
+    const fd = new FormData(f);
+    const price = fd.get('price') === '' ? null : Number(fd.get('price'));
+    try {
+      await db.collection('scans').add({ sku, name: it ? it.n : sku, storeId: fd.get('store'), result: fd.get('result'), price, ts: Date.now() });
+      toast('Scan logged');
+    } catch (err) { toast(err && err.code === 'invalid_argument' ? 'You can view but not log scans here' : 'Could not log scan'); }
+  });
+
+  $('areaSeg').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-area]'); if (!b) return;
+    region = b.dataset.area; storeId = 'all'; store('ph-region', region); store('ph-store', storeId); render();
+  });
+  $('storeSel').addEventListener('change', (e) => { storeId = e.target.value; store('ph-store', storeId); render(); });
+  for (const t of ['hunt', 'track', 'how']) $('tab-' + t).addEventListener('click', () => { tab = t; store('ph-tab', tab); render(); });
+
+  $('f-store').innerHTML = '<option value="">—</option>' + D.stores.map(s => `<option value="${s.id}">${esc(s.n)}</option>`).join('');
+  resetForm();
+  render();
+
+  (async () => {
+    if (!window.claude || !window.claude.use) return;
+    const [dbNs, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+    if (!dbNs) { render(); return; }
+    db = dbNs;
+    if (user && user.can) { try { const c = await user.can('data.write'); if (c === false) canWrite = false; } catch (e) {} }
+    db.collection('flips').orderBy('createdAt', 'desc').limit(500).onSnapshot(snap => {
+      flips = snap.docs.map(d => ({ _id: d.id, ...d.data() })); render();
+    }, () => {});
+    db.collection('scans').orderBy('ts', 'desc').limit(500).onSnapshot(snap => {
+      scans = snap.docs.map(d => ({ _id: d.id, ...d.data() })); render();
+    }, () => {});
+    render();
+  })();
+})();
+</script>
