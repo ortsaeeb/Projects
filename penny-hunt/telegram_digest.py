@@ -314,6 +314,8 @@ def main():
                     help="config.json; its optional \"telegram\" block names the group and one tab per area")
     ap.add_argument("--setup-topics", action="store_true",
                     help="create one tab per area in the group the bot was just added to, then print the config")
+    ap.add_argument("--list-only", action="store_true",
+                    help="send and pin only the full list (no header or cards), e.g. to restore a missed list")
     ap.add_argument("--no-recall-check", action="store_true",
                     help="skip checking card items against the CPSC recall database")
     ap.add_argument("--dry-run", action="store_true", help="print the messages instead of sending them")
@@ -421,6 +423,14 @@ def main():
 
     try:
         bot = Bot(chat_id=str(tg_cfg["chat_id"]) if tg_cfg.get("chat_id") else None)
+        if args.list_only:
+            if use_topics:
+                for sec in sections:
+                    send_list(bot, [list_title(board), ""] + area_list_lines(sec), topics[sec["area"]["zip"]])
+            else:
+                send_list(bot, list_lines(board, sections))
+            print("telegram_digest: sent and pinned the full list", file=sys.stderr)
+            return
         if use_topics:
             # Group with Topics: General gets the summary; each area gets its own tab.
             tabs = [[{"text": f"📍 {sec['area']['label']} ({len(sec['cards'])})",
