@@ -39,10 +39,10 @@ echo "3 new leads at Evanston" | python3 notify_telegram.py
 ```
 
 It reads two environment variables:
-- `TELEGRAM_BOT_TOKEN`: from @BotFather.
-- `TELEGRAM_CHAT_ID`: your chat id. Message @userinfobot to get it.
+- `TELEGRAM_BOT_TOKEN`: from @BotFather. Required.
+- `TELEGRAM_CHAT_ID`: your chat id. Optional. If it's missing, the script uses the chat of the last message you sent the bot within 24 hours, and prints the id so you can save it.
 
-Set both in the cloud environment's settings, never in this repo. If they're missing, the script sends nothing and exits with code 3.
+Set them in the cloud environment's settings, never in this repo. If there's no token, the script sends nothing and exits with code 3.
 
 ## Reading the results
 
