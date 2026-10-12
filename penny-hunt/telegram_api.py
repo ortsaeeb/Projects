@@ -118,6 +118,9 @@ class Bot:
             payload["icon_color"] = color
         return (self.call("createForumTopic", payload) or {})["message_thread_id"]
 
+    def edit_topic(self, thread, name):
+        self.call("editForumTopic", {"chat_id": self.resolve_chat(), "message_thread_id": thread, "name": name})
+
     def topic_link(self, thread):
         """Link that opens a topic (works for members of the group)."""
         return f"https://t.me/c/{str(self.chat_id).removeprefix('-100')}/{thread}"
