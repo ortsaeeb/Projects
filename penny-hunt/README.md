@@ -32,7 +32,20 @@ A run of about 95 items across 16 stores makes about 1,500 requests and takes ab
 
 ## Telegram updates
 
-`notify_telegram.py` sends a message read from stdin through your own Telegram bot. The message includes a button that opens the board:
+`telegram_digest.py` turns a board page into messages you can read right in Telegram:
+- **A header** with an optional summary. It's the only message that buzzes your phone.
+- **A photo card for each new or top deal.** It shows the price, % off, the stores, the latest penny report, and the SKU and model number to tap-copy. Its buttons open the **Home Depot** page, **eBay sold** listings for that model, and **directions** to the store.
+- **Every lead as a compact list**, pinned to the top of the chat.
+
+```sh
+python3 penny_scan.py --board new.html
+python3 telegram_digest.py --board new.html --prev old.html --summary-file summary.txt
+python3 telegram_digest.py --board new.html --dry-run    # preview without sending
+```
+
+With `--prev` (the previous board), cards only cover what changed: new items, new or lower clearance prices, and new Illinois reports. Cards skip items under `--min-retail` (default $25), but the pinned list still shows them.
+
+`notify_telegram.py` sends a plain message read from stdin:
 
 ```sh
 echo "3 new leads at Evanston" | python3 notify_telegram.py

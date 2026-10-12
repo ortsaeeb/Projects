@@ -38,7 +38,8 @@ GRAPHQL = "https://www.homedepot.com/federation-gateway/graphql?opname=productCl
 QUERY = """query productClientOnlyProduct($itemId: String!, $storeId: String, $zipCode: String) {
   product(itemId: $itemId) {
     itemId
-    identifiers { productLabel brandName storeSkuNumber }
+    identifiers { productLabel brandName storeSkuNumber canonicalUrl modelNumber upc }
+    media { images { url } }
     pricing(storeId: $storeId) { value clearance { value } }
     fulfillment(storeId: $storeId, zipCode: $zipCode) {
       anchorStoreStatusType
@@ -154,9 +155,13 @@ def check(item_id, store):
                     if loc.get("isAnchor"):
                         qty = loc["inventory"]["quantity"]
     pricing = p.get("pricing") or {}
+    ids = p.get("identifiers") or {}
+    images = (p.get("media") or {}).get("images") or []
+    img = images[0]["url"].replace("<SIZE>", "600") if images and images[0].get("url") else None
     return dict(status=f.get("anchorStoreStatusType") or "UNKNOWN", qty=qty, price=pricing.get("value"),
-                clearance=(pricing.get("clearance") or {}).get("value"),
-                label=(p.get("identifiers") or {}).get("productLabel"))
+                clearance=(pricing.get("clearance") or {}).get("value"), label=ids.get("productLabel"),
+                product=dict(url=ids.get("canonicalUrl"), model=ids.get("modelNumber"), upc=ids.get("upc"),
+                             brand=ids.get("brandName"), img=img))
 
 
 def score(row, today):
@@ -192,6 +197,9 @@ def build_board(template, out, areas, stores, items, results, checked):
         e = dict(s=it["sku"], n=it["name"], p=price, seen=it["seen"] or "", st=it["states"], il=it["il_cities"])
         if per:
             e["per"] = per
+        product = next((r["product"] for (sku, _), r in results.items() if sku == it["sku"]), None)
+        if product:
+            e.update({k: v for k, v in product.items() if v})
         data["items"].append(e)
     payload = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     html = Path(template).read_text(encoding="utf-8").replace("__DATA__", payload)
