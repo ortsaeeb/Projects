@@ -236,22 +236,24 @@ def area_list_lines(sec, title=None):
     lines.append(area_line(sec["area"], sec["stores"]))
     if watch:
         more = f" Top {WATCH_LIST_MAX} of {len(watch)}." if len(watch) > WATCH_LIST_MAX else ""
-        lines.append(f"🪙 <b>PENNY CHANCES</b>: may ring up $0.01. Scan to find out.{more}")
+        lines.append(f"🪙 <b>PENNY CHANCES</b>: price unknown until you scan. Could be $0.01. "
+                     f"The price shown is regular retail.{more}")
         for l in watch[:WATCH_LIST_MAX]:
             it = l["item"]
             flag = "⚠️ RECALLED " if sec.get("recalls", {}).get(it["s"], {}).get("status") == "recalled" else ""
             where = f"{len(l['clearance'])} stores" if len(l["clearance"]) > 1 else (
                 l["clearance"][0]["n"] if l["clearance"] else "in stock, inactive")
             il = f" · IL: {esc(it['il'])}" if it.get("il") else ""
-            lines.append(f"• {flag}<a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> {money(it.get('p'))} · "
-                         f"{esc(where)}{il} <code>{esc(it['s'])}</code>")
+            lines.append(f"• {flag}<a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> · "
+                         f"retail {money(it.get('p'))}, may ring <b>$0.01</b> · in clearance at {esc(where)}{il} "
+                         f"<code>{esc(it['s'])}</code>")
     if deals:
-        lines.append("🏷 <b>CLEARANCE DEALS</b>: marked-down price, not a penny.")
+        lines.append("🏷 <b>CLEARANCE DEALS</b>: the store's current marked-down price. Not a penny.")
         for l in deals:
             it, (best, store) = l["item"], l["marked"][0]
             flag = "⚠️ RECALLED " if sec.get("recalls", {}).get(it["s"], {}).get("status") == "recalled" else ""
-            lines.append(f"• {flag}<b>{money(best)}</b> −{round(l['pct'] * 100)}% "
-                         f"<a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> · {esc(store['n'])} "
+            lines.append(f"• {flag}<b>{money(best)}</b> (was {money(it.get('p'))}, −{round(l['pct'] * 100)}%) "
+                         f"<a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> · at {esc(store['n'])} "
                          f"<code>{esc(it['s'])}</code>")
     if not watch and not deals:
         lines.append("Nothing on the penny lists is in clearance at these stores right now.")
@@ -262,7 +264,8 @@ def gone_lines(board):
     gone = [it for it in board["items"] if not it.get("per")]
     if not gone:
         return []
-    lines = ["👀 <b>NOT ON THE WEBSITE</b>: pennied elsewhere, look on shelves in any store."]
+    lines = ["👀 <b>NOT ON THE WEBSITE</b>: rang up $0.01 elsewhere, but Home Depot's site has no price or "
+             "stock for it. Scan any you spot on a shelf."]
     lines += [f"• {esc(short(it['n']))} <code>{esc(it['s'])}</code>" for it in gone]
     return lines
 
