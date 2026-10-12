@@ -433,7 +433,7 @@ def main():
             return
         if use_topics:
             # Group with Topics: General gets the summary; each area gets its own tab.
-            tabs = [[{"text": f"📍 {sec['area']['label']} ({len(sec['cards'])})",
+            tabs = [[{"text": f"📍 {sec['area']['label']} {sec['area']['zip']} · {len(sec['cards'])} deals",
                       "url": bot.topic_link(topics[sec["area"]["zip"]])}] for sec in sections]
             bot.send_message(header_text, buttons=tabs + [[{"text": "📋 Open the full board", "url": args.board_url}]])
             for sec in sections:
@@ -481,7 +481,7 @@ def setup_topics(config_path):
     topics = {}
     try:
         for i, area in enumerate(cfg["areas"]):
-            thread = bot.create_topic(f"📍 {area['label']}", colors[i % len(colors)])
+            thread = bot.create_topic(f"📍 {area['label']} ({area['zip']})", colors[i % len(colors)])
             topics[area["zip"]] = thread
             bot.send_message(f"📍 <b>{esc(area['label'])}</b> tab: penny chances and clearance deals for the "
                              f"stores around {esc(area['zip'])}. The full list stays pinned here.", thread=thread)
