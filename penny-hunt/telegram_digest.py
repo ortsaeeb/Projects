@@ -212,39 +212,55 @@ def area_line(area, stores, limit=3):
     return f"📍 <b>{esc(area['label'].upper())}</b> · {esc(shown + more)}"
 
 
-def list_lines(board, sections):
-    """Every lead, one line each and grouped by area, for the pinned list."""
-    lines = [f"📋 <b>Every lead · {esc(board['checked'])}</b>",
-             "Tap a name for the Home Depot page, tap a SKU to copy it."]
-    for sec in sections:
-        deals = [l for l in sec["leads"] if l["kind"] == "deal"]
-        watch = [l for l in sec["leads"] if l["kind"] == "watch"]
-        lines += ["", area_line(sec["area"], sec["stores"])]
-        if watch:
-            more = f" Top {WATCH_LIST_MAX} of {len(watch)}." if len(watch) > WATCH_LIST_MAX else ""
-            lines.append(f"🪙 <b>PENNY CHANCES</b>: may ring up $0.01. Scan to find out.{more}")
-            for l in watch[:WATCH_LIST_MAX]:
-                it = l["item"]
-                where = f"{len(l['clearance'])} stores" if len(l["clearance"]) > 1 else (
-                    l["clearance"][0]["n"] if l["clearance"] else "in stock, inactive")
-                il = f" · IL: {esc(it['il'])}" if it.get("il") else ""
-                lines.append(f"• <a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> {money(it.get('p'))} · "
-                             f"{esc(where)}{il} <code>{esc(it['s'])}</code>")
-        if deals:
-            lines.append("🏷 <b>CLEARANCE DEALS</b>: marked-down price, not a penny.")
-            for l in deals:
-                it, (best, store) = l["item"], l["marked"][0]
-                lines.append(f"• <b>{money(best)}</b> −{round(l['pct'] * 100)}% "
-                             f"<a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> · {esc(store['n'])} "
-                             f"<code>{esc(it['s'])}</code>")
-        if not watch and not deals:
-            lines.append("Nothing on the penny lists is in clearance at these stores right now.")
-    gone = [it for it in board["items"] if not it.get("per")]
-    if gone:
-        lines += ["", "👀 <b>NOT ON THE WEBSITE</b>: pennied elsewhere, look on shelves."]
-        for it in gone:
-            lines.append(f"• {esc(short(it['n']))} <code>{esc(it['s'])}</code>")
+def area_list_lines(sec, title=None):
+    """One area's leads, one line each, for its pinned list."""
+    deals = [l for l in sec["leads"] if l["kind"] == "deal"]
+    watch = [l for l in sec["leads"] if l["kind"] == "watch"]
+    lines = [title] if title else []
+    lines.append(area_line(sec["area"], sec["stores"]))
+    if watch:
+        more = f" Top {WATCH_LIST_MAX} of {len(watch)}." if len(watch) > WATCH_LIST_MAX else ""
+        lines.append(f"🪙 <b>PENNY CHANCES</b>: may ring up $0.01. Scan to find out.{more}")
+        for l in watch[:WATCH_LIST_MAX]:
+            it = l["item"]
+            where = f"{len(l['clearance'])} stores" if len(l["clearance"]) > 1 else (
+                l["clearance"][0]["n"] if l["clearance"] else "in stock, inactive")
+            il = f" · IL: {esc(it['il'])}" if it.get("il") else ""
+            lines.append(f"• <a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> {money(it.get('p'))} · "
+                         f"{esc(where)}{il} <code>{esc(it['s'])}</code>")
+    if deals:
+        lines.append("🏷 <b>CLEARANCE DEALS</b>: marked-down price, not a penny.")
+        for l in deals:
+            it, (best, store) = l["item"], l["marked"][0]
+            lines.append(f"• <b>{money(best)}</b> −{round(l['pct'] * 100)}% "
+                         f"<a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> · {esc(store['n'])} "
+                         f"<code>{esc(it['s'])}</code>")
+    if not watch and not deals:
+        lines.append("Nothing on the penny lists is in clearance at these stores right now.")
     return lines
+
+
+def gone_lines(board):
+    gone = [it for it in board["items"] if not it.get("per")]
+    if not gone:
+        return []
+    lines = ["👀 <b>NOT ON THE WEBSITE</b>: pennied elsewhere, look on shelves in any store."]
+    lines += [f"• {esc(short(it['n']))} <code>{esc(it['s'])}</code>" for it in gone]
+    return lines
+
+
+def list_title(board):
+    return (f"📋 <b>Every lead · {esc(board['checked'])}</b>\n"
+            "Tap a name for the Home Depot page, tap a SKU to copy it.")
+
+
+def list_lines(board, sections):
+    """Every lead for every area, for the pinned list in a one-chat setup."""
+    lines = [list_title(board)]
+    for sec in sections:
+        lines += [""] + area_list_lines(sec)
+    gone = gone_lines(board)
+    return lines + ([""] + gone if gone else [])
 
 
 def visible_len(text):
@@ -268,7 +284,7 @@ def chunk(lines, limit=TEXT_LIMIT):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--board", required=True, help="the new board page from penny_scan.py --board")
+    ap.add_argument("--board", help="the new board page from penny_scan.py --board")
     ap.add_argument("--prev", help="the previous board page, to send cards only for what changed")
     ap.add_argument("--summary-file", help="plain-text summary to put in the header")
     ap.add_argument("--penny-cards", type=int, default=3, help="most penny-chance cards per area (default 3)")
@@ -276,9 +292,19 @@ def main():
     ap.add_argument("--min-retail", type=float, default=25,
                     help="only send cards for items retailing at least this much (default $25)")
     ap.add_argument("--board-url", default=BOARD_URL)
+    ap.add_argument("--config", default=str(Path(__file__).resolve().parent / "config.json"),
+                    help="config.json; its optional \"telegram\" block names the group and one tab per area")
+    ap.add_argument("--setup-topics", action="store_true",
+                    help="create one tab per area in the group the bot was just added to, then print the config")
     ap.add_argument("--dry-run", action="store_true", help="print the messages instead of sending them")
     args = ap.parse_args()
+    if args.setup_topics:
+        return setup_topics(args.config)
+    cfg = json.loads(Path(args.config).read_text(encoding="utf-8")) if Path(args.config).exists() else {}
+    tg_cfg = cfg.get("telegram") or {}
 
+    if not args.board:
+        ap.error("--board is required")
     board = load_board(args.board)
     prev = load_board(args.prev) if args.prev and Path(args.prev).exists() else None
 
@@ -302,75 +328,129 @@ def main():
 
     summary = Path(args.summary_file).read_text(encoding="utf-8").strip() if args.summary_file else ""
     new = "new " if prev else ""
+
+    def counts(sec):
+        p, d = len(sec["pennies"]), len(sec["deals"])
+        return (f"{p} {new}penny chance{'s' if p != 1 else ''} · {d} {new}clearance deal{'s' if d != 1 else ''}"
+                if p or d else "nothing new")
+
     header = [f"🔨 <b>Penny Hunt</b> · {esc(board['checked'])}"]
     if summary:
         header.append(esc(summary))
-    for sec in sections:
-        p, d = len(sec["pennies"]), len(sec["deals"])
-        counts = (f"{p} {new}penny chance{'s' if p != 1 else ''} · {d} {new}clearance deal{'s' if d != 1 else ''}"
-                  if p or d else "nothing new")
-        header.append(f"📍 {esc(sec['area']['label'])}: {counts}")
+    header += [f"📍 {esc(sec['area']['label'])}: {counts(sec)}" for sec in sections]
     header.append("🪙 = may ring up $0.01, scan to check · 🏷 = marked-down price, not a penny")
-    header.append("📌 Every lead for each area is in the pinned list.")
+    topics = {str(k): v for k, v in (tg_cfg.get("topics") or {}).items()}
+    use_topics = bool(topics) and all(sec["area"]["zip"] in topics for sec in sections)
+    header.append("👇 Tap an area to open its tab." if use_topics else "📌 Every lead for each area is in the pinned list.")
     header_text = "\n".join(header)[:TEXT_LIMIT]
 
-    # What to send after the header: per area, a short divider, then its cards.
-    batches = []
     for sec in sections:
-        picked = sec["pennies"] + sec["deals"]
-        if picked:
-            batches.append((area_line(sec["area"], sec["stores"]),
-                            [(card(l, n), l["item"].get("img")) for l, n in picked]))
-    lists = chunk(list_lines(board, sections))
-    n_cards = sum(len(c) for _, c in batches)
+        sec["cards"] = [(card(l, n), l["item"].get("img")) for l, n in sec["pennies"] + sec["deals"]]
+    n_cards = sum(len(sec["cards"]) for sec in sections)
 
     if args.dry_run:
+        print(f"[{'topics: one tab per area' if use_topics else 'one chat'}]")
         print(header_text, "\n" + "=" * 40)
-        for divider, cards in batches:
-            print(divider, "\n" + "-" * 40)
-            for (caption, buttons), _ in cards:
+        for sec in sections:
+            print(f"[tab {sec['area']['label']}]" if use_topics else area_line(sec["area"], sec["stores"]))
+            for (caption, buttons), _ in sec["cards"]:
                 print(caption, "\n  buttons:", " | ".join(b["text"] for row in buttons for b in row), "\n" + "-" * 40)
-        for part in lists:
-            print(part, "\n" + "=" * 40)
-        print(f"{n_cards} cards in {len(batches)} area section(s), {len(lists)} list message(s)", file=sys.stderr)
+            if use_topics:
+                for part in chunk([list_title(board), ""] + area_list_lines(sec)):
+                    print(part, "\n" + "=" * 40)
+        if not use_topics:
+            for part in chunk(list_lines(board, sections)):
+                print(part, "\n" + "=" * 40)
+        elif gone_lines(board):
+            print("[General]", "\n".join(gone_lines(board)))
+        print(f"{n_cards} cards", file=sys.stderr)
         return
 
     from telegram_api import Bot, NotConfigured, TelegramError
-    try:
-        bot = Bot()
-        bot.send_message(header_text, buttons=[[{"text": "📋 Open the full board", "url": args.board_url}]])
-        for divider, cards in batches:
+
+    def send_cards(bot, cards, thread=None):
+        for (caption, buttons), img in cards:
             time.sleep(0.4)
-            bot.send_message(divider, silent=True)
-            for (caption, buttons), img in cards:
-                time.sleep(0.4)
-                try:
-                    if not img:
-                        raise TelegramError("no photo")
-                    bot.send_photo(img, caption, buttons, silent=True)
-                except TelegramError:  # photo missing or Telegram couldn't fetch it: send the text alone
-                    bot.send_message(caption, buttons, silent=True)
+            try:
+                if not img:
+                    raise TelegramError("no photo")
+                bot.send_photo(img, caption, buttons, silent=True, thread=thread)
+            except TelegramError:  # photo missing or Telegram couldn't fetch it: send the text alone
+                bot.send_message(caption, buttons, silent=True, thread=thread)
+
+    def send_list(bot, lines, thread=None):
         first = None
-        for part in lists:
+        for part in chunk(lines):
             time.sleep(0.4)
-            msg = bot.send_message(part, silent=True)
+            msg = bot.send_message(part, silent=True, thread=thread)
             first = first or msg
         if first:
             try:
-                bot.pin(first["message_id"])
+                bot.pin(first["message_id"], thread=thread)
             except TelegramError as e:
                 print(f"telegram_digest: couldn't pin the list ({e})", file=sys.stderr)
+
+    try:
+        bot = Bot(chat_id=str(tg_cfg["chat_id"]) if tg_cfg.get("chat_id") else None)
+        if use_topics:
+            # Group with Topics: General gets the summary; each area gets its own tab.
+            tabs = [[{"text": f"📍 {sec['area']['label']} ({len(sec['cards'])})",
+                      "url": bot.topic_link(topics[sec["area"]["zip"]])}] for sec in sections]
+            bot.send_message(header_text, buttons=tabs + [[{"text": "📋 Open the full board", "url": args.board_url}]])
+            for sec in sections:
+                thread = topics[sec["area"]["zip"]]
+                time.sleep(0.4)
+                bot.send_message(f"🔨 <b>{esc(board['checked'])}</b> · {counts(sec)}", silent=True, thread=thread)
+                send_cards(bot, sec["cards"], thread)
+                send_list(bot, [list_title(board), ""] + area_list_lines(sec), thread)
+            if gone_lines(board):
+                time.sleep(0.4)
+                bot.send_message("\n".join(gone_lines(board))[:TEXT_LIMIT], silent=True)
+        else:
+            bot.send_message(header_text, buttons=[[{"text": "📋 Open the full board", "url": args.board_url}]])
+            for sec in sections:
+                if sec["cards"]:
+                    time.sleep(0.4)
+                    bot.send_message(area_line(sec["area"], sec["stores"]), silent=True)
+                    send_cards(bot, sec["cards"])
+            send_list(bot, list_lines(board, sections))
     except NotConfigured as e:
         print(f"telegram_digest: not set up, {e}; nothing sent", file=sys.stderr)
         sys.exit(3)
     except TelegramError as e:
         sys.exit(f"telegram_digest: {e}")
-    print(f"telegram_digest: sent header, {n_cards} cards in {len(batches)} area section(s) "
-          f"and {len(lists)} list message(s)", file=sys.stderr)
+    print(f"telegram_digest: sent header and {n_cards} cards "
+          f"{'in one tab per area' if use_topics else 'in one chat'}", file=sys.stderr)
     if bot.found_chat_id:
         print(f"telegram_digest: found your chat ID {bot.chat_id} from your last message to the bot. "
               f"Save TELEGRAM_CHAT_ID={bot.chat_id} in the environment so updates keep working; "
               "the bot only remembers messages for 24 hours.", file=sys.stderr)
+
+
+def setup_topics(config_path):
+    """Find the group with Topics the bot was added to, create one tab per area, print the config."""
+    from telegram_api import Bot, TelegramError
+    cfg = json.loads(Path(config_path).read_text(encoding="utf-8"))
+    bot = Bot(chat_id="")
+    chat_id, title = bot.find_forum_group()
+    if not chat_id:
+        sys.exit("telegram_digest: no group with Topics found. Add the bot to the group as an admin "
+                 "(Manage Topics + Pin Messages), turn on Topics, send any message in the group, "
+                 "then run this again within 24 hours.")
+    bot.chat_id = chat_id
+    colors = [9367192, 7322096, 16766590, 13338331, 16749490, 16478047]
+    topics = {}
+    try:
+        for i, area in enumerate(cfg["areas"]):
+            thread = bot.create_topic(f"📍 {area['label']}", colors[i % len(colors)])
+            topics[area["zip"]] = thread
+            bot.send_message(f"📍 <b>{esc(area['label'])}</b> tab: penny chances and clearance deals for the "
+                             f"stores around {esc(area['zip'])}. The full list stays pinned here.", thread=thread)
+        bot.send_message("🔨 <b>Penny Hunt</b> is set up. Each morning a summary lands here, "
+                         "and each area's deals go to its own tab.")
+    except TelegramError as e:
+        sys.exit(f"telegram_digest: {e}. Make sure the bot is an admin with Manage Topics and Pin Messages.")
+    print(json.dumps({"telegram": {"chat_id": chat_id, "group": title, "topics": topics}}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

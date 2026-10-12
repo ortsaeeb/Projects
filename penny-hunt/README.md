@@ -49,6 +49,15 @@ python3 telegram_digest.py --board new.html --dry-run    # preview without sendi
 
 With `--prev` (the previous board), cards only cover what changed: new items, new or lower clearance prices, and new Illinois reports. Messages are grouped by area, in the order the areas appear in `config.json`, so put the area you're in most first. Clearance and penny prices only apply at the store that has the item. Each area gets up to `--penny-cards` (default 3) penny chances and `--deal-cards` (default 2) clearance deals, and leads at a store within 15 miles rank higher. Cards skip items under `--min-retail` (default $25), but the pinned list still shows them.
 
+### One tab per area (Telegram Topics)
+
+In a Telegram group with **Topics** turned on, each area gets its own tab with its own cards and pinned list. The **General** tab gets the daily summary, with buttons that jump to each area's tab. To set it up:
+
+1. Create a group, add the bot, and turn on **Topics** in the group settings.
+2. Make the bot an admin with **Manage Topics** and **Pin Messages**, then send any message in the group.
+3. Within 24 hours, run `python3 telegram_digest.py --setup-topics` with the bot token set. It creates the tabs and prints a `"telegram"` block, for example `{"chat_id": "-100…", "topics": {"61761": 2, "60645": 4}}`.
+4. Add that block to `config.json`. From then on, the digest posts to the group's tabs instead of the private chat.
+
 `notify_telegram.py` sends a plain message read from stdin:
 
 ```sh

@@ -62,21 +62,55 @@ class Bot:
         raise TelegramError(f"TELEGRAM_CHAT_ID isn't set and nobody has messaged @{bot} in the last 24 hours. "
                             f"Open t.me/{bot} in Telegram, tap Start, send any message, then run this again.")
 
-    def send_message(self, html, buttons=None, silent=False):
+    def send_message(self, html, buttons=None, silent=False, thread=None):
         payload = {"chat_id": self.resolve_chat(), "text": html, "parse_mode": "HTML",
                    "disable_web_page_preview": True, "disable_notification": silent}
         if buttons:
             payload["reply_markup"] = {"inline_keyboard": buttons}
+        if thread:
+            payload["message_thread_id"] = thread
         return self.call("sendMessage", payload)
 
-    def send_photo(self, photo_url, html_caption, buttons=None, silent=False):
+    def send_photo(self, photo_url, html_caption, buttons=None, silent=False, thread=None):
         payload = {"chat_id": self.resolve_chat(), "photo": photo_url, "caption": html_caption,
                    "parse_mode": "HTML", "disable_notification": silent}
         if buttons:
             payload["reply_markup"] = {"inline_keyboard": buttons}
+        if thread:
+            payload["message_thread_id"] = thread
         return self.call("sendPhoto", payload)
 
-    def pin(self, message_id):
-        self.call("unpinAllChatMessages", {"chat_id": self.resolve_chat()})
+    def pin(self, message_id, thread=None):
+        """Pin a message, replacing earlier pins (in that topic only, for a topic)."""
+        if thread:
+            self.call("unpinAllForumTopicMessages", {"chat_id": self.resolve_chat(), "message_thread_id": thread})
+        else:
+            self.call("unpinAllChatMessages", {"chat_id": self.resolve_chat()})
         self.call("pinChatMessage", {"chat_id": self.chat_id, "message_id": message_id,
                                      "disable_notification": True})
+
+    # Groups with Topics (forums): each topic works like a tab.
+
+    def is_forum(self):
+        return bool((self.call("getChat", {"chat_id": self.resolve_chat()}) or {}).get("is_forum"))
+
+    def find_forum_group(self):
+        """The most recent group with Topics that the bot has seen in the last 24 hours."""
+        for update in reversed(self.call("getUpdates") or []):
+            for key in ("message", "edited_message", "my_chat_member"):
+                chat = (update.get(key) or {}).get("chat") or {}
+                if chat.get("type") == "supergroup" and chat.get("id"):
+                    info = self.call("getChat", {"chat_id": chat["id"]}) or {}
+                    if info.get("is_forum"):
+                        return str(chat["id"]), info.get("title", "")
+        return None, None
+
+    def create_topic(self, name, color=None):
+        payload = {"chat_id": self.resolve_chat(), "name": name}
+        if color:
+            payload["icon_color"] = color
+        return (self.call("createForumTopic", payload) or {})["message_thread_id"]
+
+    def topic_link(self, thread):
+        """Link that opens a topic (works for members of the group)."""
+        return f"https://t.me/c/{str(self.chat_id).removeprefix('-100')}/{thread}"
