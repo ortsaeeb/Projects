@@ -18,10 +18,10 @@
   "telegram": {
     "chat_id": "-1004470769303",
     "group": "Penny Hunt",
-    "layout": "type",
+    "layout": "area",
     "topics": {
-      "penny": 59,
-      "deals": 60
+      "61761": 64,
+      "60645": 66
     }
   }
 }
