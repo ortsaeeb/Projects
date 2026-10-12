@@ -56,8 +56,10 @@ def main():
     if not chat_id:
         chat_id = find_chat_id(token)
         if not chat_id:
-            sys.exit("notify_telegram: TELEGRAM_CHAT_ID isn't set and nobody has messaged the bot in the "
-                     "last 24 hours. Send your bot any message in Telegram, then run this again.")
+            bot = (call(token, "getMe") or {}).get("username", "your bot")
+            sys.exit(f"notify_telegram: TELEGRAM_CHAT_ID isn't set and nobody has messaged @{bot} in the "
+                     f"last 24 hours. Open t.me/{bot} in Telegram, tap Start, send any message, "
+                     "then run this again.")
         payload["chat_id"], found = chat_id, True
 
     call(token, "sendMessage", payload)
