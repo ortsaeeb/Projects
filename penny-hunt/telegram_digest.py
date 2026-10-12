@@ -3,10 +3,14 @@
 
 Reads the board page that penny_scan.py built and sends:
   1. A short header (with an optional summary), which buzzes your phone.
-  2. A photo card for each new or top deal: price, % off, which stores, the
-     latest penny report, and the SKU to tap-copy, with buttons for the
-     Home Depot page, eBay sold prices and directions to the store.
-  3. Every lead as a compact list, pinned to the top of the chat.
+  2. Photo cards in two clearly labeled kinds:
+       🪙 PENNY CHANCE: rang up $0.01 elsewhere and sits in clearance at your
+          stores with no stock showing. Might be a penny; scan it to find out.
+       🏷 CLEARANCE DEAL: your store shows a real markdown price. Not a penny.
+     Each card has the SKU to tap-copy and buttons for the Home Depot page,
+     eBay sold prices and directions to the store.
+  3. Every lead as a compact list in the same two groups, pinned to the top
+     of the chat.
 Everything after the header is sent silently.
 
 With --prev (yesterday's board), cards only cover what changed: new items,
@@ -143,31 +147,36 @@ def directions_url(store):
     return "https://www.google.com/maps/dir/?api=1&destination=" + quote(f"The Home Depot, {store['a']}")
 
 
+PENNY_BADGE = "🪙 <b>PENNY CHANCE</b> · may ring up $0.01"
+DEAL_BADGE = "🏷 <b>CLEARANCE DEAL</b> · marked down, not a penny"
+
+
 def card(lead, note):
     """Caption and buttons for one deal card."""
     it = lead["item"]
-    lines = [f"<b>{esc(note)}</b>"] if note else []
+    lines = [PENNY_BADGE if lead["kind"] == "watch" else DEAL_BADGE]
+    if note:
+        lines.append(f"<i>{esc(note)}</i>")
     lines.append(f"<b>{esc(it['n'])}</b>")
+    il = f" · IL: {esc(it['il'])}" if it.get("il") else ""
     if lead["kind"] == "deal":
         best = lead["marked"][0][0]
         at_best = [s for p, s in lead["marked"] if p == best]
         others = [(p, s) for p, s in lead["marked"] if p != best]
-        lines.append(f"🏷 <b>{money(best)}</b>  <s>{money(it.get('p'))}</s>  −{round(lead['pct'] * 100)}%")
+        lines.append(f"💲 <b>{money(best)}</b>  <s>{money(it.get('p'))}</s>  −{round(lead['pct'] * 100)}%")
         lines.append(f"📍 {esc(store_names(at_best))}")
         if others:
             lines.append(f"     also {esc(store_names([s for _, s in others], 2))} from {money(others[0][0])}")
+        lines.append(f"ℹ️ Rang up $0.01 at other stores ({age_text(lead['days'])}{il}), so this price may keep dropping.")
         target = at_best[0]
     else:
-        lines.append(f"🪙 <b>Penny watch</b> · retail {money(it.get('p'))}")
+        lines.append(f"💲 Retail {money(it.get('p'))} · rang up <b>$0.01</b> elsewhere {age_text(lead['days'])}{il}")
         if lead["clearance"]:
-            lines.append(f"📍 Clearance at {esc(store_names(lead['clearance']))}")
+            lines.append(f"📍 In clearance, none showing online: {esc(store_names(lead['clearance']))}")
         if lead["inactive"]:
-            lines.append("📦 Still in stock: " + esc(", ".join(f"{s['n']} ({q})" for s, q in lead["inactive"][:3])))
+            lines.append("📦 Still shows stock: " + esc(", ".join(f"{s['n']} ({q})" for s, q in lead["inactive"][:3])))
+        lines.append("👉 Find it on the shelf and scan the box barcode at self-checkout.")
         target = (lead["clearance"] or [s for s, _ in lead["inactive"]])[0]
-    report = f"🧾 Last $0.01 report {age_text(lead['days'])}"
-    if it.get("il"):
-        report += f" · IL: {esc(it['il'])}"
-    lines.append(report)
     ids = f"🔢 SKU <code>{esc(it['s'])}</code>"
     if it.get("model"):
         ids += f" · Model <code>{esc(it['model'])}</code>"
@@ -184,18 +193,12 @@ def card(lead, note):
 
 def list_lines(board, leads):
     """Every lead, one line each, for the pinned list."""
-    lines = [f"📋 <b>Every lead · {esc(board['checked'])}</b>", "Tap a name for the Home Depot page, tap a SKU to copy it."]
+    lines = [f"📋 <b>Every lead · {esc(board['checked'])}</b>",
+             "Tap a name for the Home Depot page, tap a SKU to copy it."]
     deals = [l for l in leads if l["kind"] == "deal"]
     watch = [l for l in leads if l["kind"] == "watch"][:WATCH_LIST_MAX]
-    if deals:
-        lines += ["", "🏷 <b>Marked down at your stores</b>"]
-        for l in deals:
-            it, (best, store) = l["item"], l["marked"][0]
-            lines.append(f"• <b>{money(best)}</b> −{round(l['pct'] * 100)}% "
-                         f"<a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> · {esc(store['n'])} "
-                         f"<code>{esc(it['s'])}</code>")
     if watch:
-        lines += ["", "🪙 <b>Penny watch</b> (clearance near you, $0.01 elsewhere)"]
+        lines += ["", "🪙 <b>PENNY CHANCES</b>: may ring up $0.01. Scan to find out."]
         for l in watch:
             it = l["item"]
             where = f"{len(l['clearance'])} stores" if len(l["clearance"]) > 1 else (
@@ -203,9 +206,16 @@ def list_lines(board, leads):
             il = f" · IL: {esc(it['il'])}" if it.get("il") else ""
             lines.append(f"• <a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> {money(it.get('p'))} · "
                          f"{esc(where)}{il} <code>{esc(it['s'])}</code>")
+    if deals:
+        lines += ["", "🏷 <b>CLEARANCE DEALS</b>: marked-down price, not a penny."]
+        for l in deals:
+            it, (best, store) = l["item"], l["marked"][0]
+            lines.append(f"• <b>{money(best)}</b> −{round(l['pct'] * 100)}% "
+                         f"<a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> · {esc(store['n'])} "
+                         f"<code>{esc(it['s'])}</code>")
     gone = [it for it in board["items"] if not it.get("per")]
     if gone:
-        lines += ["", "👀 <b>Not on the website</b> (look on shelves)"]
+        lines += ["", "👀 <b>NOT ON THE WEBSITE</b>: pennied elsewhere, look on shelves."]
         for it in gone:
             lines.append(f"• {esc(short(it['n']))} <code>{esc(it['s'])}</code>")
     return lines
@@ -235,7 +245,8 @@ def main():
     ap.add_argument("--board", required=True, help="the new board page from penny_scan.py --board")
     ap.add_argument("--prev", help="the previous board page, to send cards only for what changed")
     ap.add_argument("--summary-file", help="plain-text summary to put in the header")
-    ap.add_argument("--cards", type=int, default=6, help="most deal cards to send (default 6)")
+    ap.add_argument("--penny-cards", type=int, default=4, help="most penny-chance cards to send (default 4)")
+    ap.add_argument("--deal-cards", type=int, default=3, help="most clearance-deal cards to send (default 3)")
     ap.add_argument("--min-retail", type=float, default=25,
                     help="only send cards for items retailing at least this much (default $25)")
     ap.add_argument("--board-url", default=BOARD_URL)
@@ -247,9 +258,12 @@ def main():
     card_leads = [l for l in leads if (l["item"].get("p") or 0) >= args.min_retail]
     if args.prev and Path(args.prev).exists():
         prev_items = {it["s"]: it for it in load_board(args.prev)["items"]}
-        picked = [(l, n) for l in card_leads if (n := change_note(l, prev_items))][:args.cards]
+        candidates = [(l, n) for l in card_leads if (n := change_note(l, prev_items))]
     else:
-        picked = [(l, None) for l in card_leads[:args.cards]]
+        candidates = [(l, None) for l in card_leads]
+    pennies = [c for c in candidates if c[0]["kind"] == "watch"][:args.penny_cards]
+    deal_cards = [c for c in candidates if c[0]["kind"] == "deal"][:args.deal_cards]
+    picked = pennies + deal_cards
 
     summary = Path(args.summary_file).read_text(encoding="utf-8").strip() if args.summary_file else ""
     deals = sum(1 for l in leads if l["kind"] == "deal")
@@ -257,11 +271,14 @@ def main():
     header = [f"🔨 <b>Penny Hunt</b> · {esc(board['checked'])}"]
     if summary:
         header.append(esc(summary))
+    new = "new " if args.prev else ""
     if picked:
-        header.append(f"👇 <b>{len(picked)}</b> {'new ' if args.prev else ''}deal{'s' if len(picked) != 1 else ''} below")
+        header.append(f"👇 <b>{len(pennies)}</b> {new}penny chance{'s' if len(pennies) != 1 else ''} · "
+                      f"<b>{len(deal_cards)}</b> {new}clearance deal{'s' if len(deal_cards) != 1 else ''}")
     else:
         header.append("Nothing new since the last update.")
-    header.append(f"📌 All {deals} markdowns and {watch} penny-watch items are in the pinned list.")
+    header.append("🪙 = may ring up $0.01, scan to check · 🏷 = marked-down price, not a penny")
+    header.append(f"📌 Pinned list: all {watch} penny chances and {deals} clearance deals.")
     header_text = "\n".join(header)[:TEXT_LIMIT]
     cards = [card(l, n) for l, n in picked]
     lists = chunk(list_lines(board, leads))
@@ -303,7 +320,8 @@ def main():
         sys.exit(3)
     except TelegramError as e:
         sys.exit(f"telegram_digest: {e}")
-    print(f"telegram_digest: sent header, {len(cards)} cards and {len(lists)} list message(s)", file=sys.stderr)
+    print(f"telegram_digest: sent header, {len(pennies)} penny-chance and {len(deal_cards)} clearance-deal cards, "
+          f"{len(lists)} list message(s)", file=sys.stderr)
     if bot.found_chat_id:
         print(f"telegram_digest: found your chat ID {bot.chat_id} from your last message to the bot. "
               f"Save TELEGRAM_CHAT_ID={bot.chat_id} in the environment so updates keep working; "

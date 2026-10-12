@@ -34,8 +34,12 @@ A run of about 95 items across 16 stores makes about 1,500 requests and takes ab
 
 `telegram_digest.py` turns a board page into messages you can read right in Telegram:
 - **A header** with an optional summary. It's the only message that buzzes your phone.
-- **A photo card for each new or top deal.** It shows the price, % off, the stores, the latest penny report, and the SKU and model number to tap-copy. Its buttons open the **Home Depot** page, **eBay sold** listings for that model, and **directions** to the store.
-- **Every lead as a compact list**, pinned to the top of the chat.
+- **Photo cards in two clearly labeled kinds:**
+  - 🪙 **Penny chance**: the item rang up $0.01 at other stores, and at yours it's in clearance with no stock showing online. It might be a penny, and you find out by scanning it.
+  - 🏷 **Clearance deal**: your store shows a real markdown price. It's a good flip, but not a penny.
+
+  Each card has the SKU and model number to tap-copy. Its buttons open the **Home Depot** page, **eBay sold** listings for that model, and **directions** to the store.
+- **Every lead as a compact list** in the same two groups, pinned to the top of the chat.
 
 ```sh
 python3 penny_scan.py --board new.html
@@ -43,7 +47,7 @@ python3 telegram_digest.py --board new.html --prev old.html --summary-file summa
 python3 telegram_digest.py --board new.html --dry-run    # preview without sending
 ```
 
-With `--prev` (the previous board), cards only cover what changed: new items, new or lower clearance prices, and new Illinois reports. Cards skip items under `--min-retail` (default $25), but the pinned list still shows them.
+With `--prev` (the previous board), cards only cover what changed: new items, new or lower clearance prices, and new Illinois reports. Each run sends up to `--penny-cards` (default 4) penny chances and `--deal-cards` (default 3) clearance deals. Cards skip items under `--min-retail` (default $25), but the pinned list still shows them.
 
 `notify_telegram.py` sends a plain message read from stdin:
 
