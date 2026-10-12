@@ -9,6 +9,7 @@ import os
 import time
 import urllib.error
 import urllib.request
+from http.client import HTTPException
 
 
 class TelegramError(Exception):
@@ -44,6 +45,12 @@ class Bot:
                     continue
                 # Telegram explains the problem in the body (bad token, chat not found, ...).
                 raise TelegramError(f"{method}: {body.get('description', e.reason)}") from None
+            except (urllib.error.URLError, HTTPException, ConnectionError, TimeoutError) as e:
+                # Dropped connection or timeout: try again, then give up with a clear error.
+                if attempt < 2:
+                    time.sleep(3 * (attempt + 1))
+                    continue
+                raise TelegramError(f"{method}: couldn't reach Telegram ({e})") from None
         if not body.get("ok"):
             raise TelegramError(f"{method}: {body.get('description', 'not accepted')}")
         return body.get("result")
