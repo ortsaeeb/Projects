@@ -246,11 +246,12 @@ def area_list_lines(sec, title=None, kinds=("watch", "deal")):
         for l in watch[:WATCH_LIST_MAX]:
             it = l["item"]
             flag = "⚠️ RECALLED " if sec.get("recalls", {}).get(it["s"], {}).get("status") == "recalled" else ""
-            where = f"{len(l['clearance'])} stores" if len(l["clearance"]) > 1 else (
-                l["clearance"][0]["n"] if l["clearance"] else "in stock, inactive")
+            # Name the stores: an area tab covers several, and the item may not be in clearance at all of them.
+            where = (f"in clearance at {store_names(l['clearance'])}" if l["clearance"] else
+                     f"phasing out, stock showing at {store_names([s for s, _ in l['inactive']])}")
             il = f" · IL: {esc(it['il'])}" if it.get("il") else ""
             lines.append(f"• {flag}<a href=\"{esc(product_url(it))}\">{esc(short(it['n']))}</a> · "
-                         f"retail {money(it.get('p'))}, may ring <b>$0.01</b> · in clearance at {esc(where)}{il} "
+                         f"retail {money(it.get('p'))}, may ring <b>$0.01</b> · {esc(where)}{il} "
                          f"<code>{esc(it['s'])}</code>")
     if deals:
         if both:
