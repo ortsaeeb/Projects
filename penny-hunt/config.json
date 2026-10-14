@@ -2,7 +2,7 @@
   "areas": [
     {
       "zip": "61761",
-      "radius": 50,
+      "radius": 10,
       "label": "Bloomington-Normal",
       "short": "Normal"
     },
@@ -10,7 +10,8 @@
       "zip": "60645",
       "radius": 12,
       "label": "Chicago North",
-      "short": "Chicago"
+      "short": "Chicago",
+      "paused": true
     }
   ],
   "max_age_days": 45,

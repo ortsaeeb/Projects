@@ -24,7 +24,7 @@ A run of about 95 items across 16 stores makes about 1,500 requests and takes ab
 ## Settings
 
 `config.json`:
-- `areas`: the ZIP codes to search around, with a radius in miles and a label for the board. A 50-mile radius around 61761 reaches Normal, Peoria and Champaign. A 12-mile radius around 60645 covers 13 Chicago-area stores.
+- `areas`: the ZIP codes to search around, with a radius in miles and a label for the board. A 10-mile radius around 61761 is just the Normal store, and 50 miles reaches Peoria and Champaign too. A 12-mile radius around 60645 covers 13 Chicago-area stores. Add `"paused": true` to an area to skip it (no scan, no Telegram posts) without losing its settings or its tab. `telegram_digest.py` follows these settings even when the board was built with wider ones.
 - `max_age_days`: drop reports last seen longer ago than this.
 - `extra_skus`: the file of hand-added SKUs.
 

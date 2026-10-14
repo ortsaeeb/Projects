@@ -215,6 +215,7 @@ def main():
     args = ap.parse_args()
 
     cfg = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    areas = [a for a in cfg["areas"] if not a.get("paused")]
     today = datetime.now().date()
 
     items = fetch_penny_reports(cfg.get("max_age_days", 45))
@@ -226,7 +227,7 @@ def main():
             it["item_id"] = iid
 
     stores = {}
-    for area in cfg["areas"]:
+    for area in areas:
         for s in find_stores(area):
             stores.setdefault(s["id"], s)
     print(f"{len(items)} penny reports, {len(stores)} stores", file=sys.stderr)
@@ -267,7 +268,7 @@ def main():
     print(f"wrote {len(rows)} leads to {args.out}", file=sys.stderr)
 
     if args.board:
-        build_board(HERE / "board_template.html", args.board, cfg["areas"], list(stores.values()),
+        build_board(HERE / "board_template.html", args.board, areas, list(stores.values()),
                     items, results, today)
         print(f"wrote board to {args.board}", file=sys.stderr)
 

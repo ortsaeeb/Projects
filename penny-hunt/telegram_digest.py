@@ -214,6 +214,21 @@ def card(lead, note, recall=None, checked=""):
     return caption, buttons
 
 
+def follow_config(board, cfg):
+    """Drop paused areas, and stores beyond each area's radius, so a board built with
+    wider settings sends only what config.json asks for now."""
+    if not board or not cfg.get("areas"):
+        return board
+    radius = {a["zip"]: a.get("radius") for a in cfg["areas"] if not a.get("paused")}
+    stores = [s for s in board["stores"] if s.get("r") in radius and (radius[s["r"]] is None or s["mi"] <= radius[s["r"]])]
+    ids = {s["id"] for s in stores}
+    items = []
+    for it in board["items"]:
+        per = {sid: v for sid, v in (it.get("per") or {}).items() if sid in ids}
+        items.append({**it, "per": per} if per else {k: v for k, v in it.items() if k != "per"})
+    return {**board, "areas": [a for a in board["areas"] if a["zip"] in radius], "stores": stores, "items": items}
+
+
 def area_board(board, zip_code):
     """The board narrowed to one area's stores."""
     ids = {s["id"] for s in board["stores"] if s.get("r") == zip_code}
@@ -557,8 +572,8 @@ def main():
 
     if not args.board:
         ap.error("--board is required")
-    board = load_board(args.board)
-    prev = load_board(args.prev) if args.prev and Path(args.prev).exists() else None
+    board = follow_config(load_board(args.board), cfg)
+    prev = follow_config(load_board(args.prev), cfg) if args.prev and Path(args.prev).exists() else None
     for a in board["areas"]:
         short_names.setdefault(a["zip"], a["label"])
     if tg_cfg.get("layout") == "type":
