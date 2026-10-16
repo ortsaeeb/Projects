@@ -74,11 +74,11 @@ def _fetch_split(first, last, missing, deadline):
             + _fetch_split(mid + timedelta(days=1), last, missing, deadline))
 
 
-def load_recalls(since_year=SINCE_YEAR, snapshot=SNAPSHOT, overlap_days=60, budget_s=300):
+def load_recalls(since_year=SINCE_YEAR, snapshot=SNAPSHOT, overlap_days=14, budget_s=300):
     """All recalls since since_year, plus any date ranges that couldn't be downloaded.
 
     Older recalls come from the saved snapshot when there is one, so only the
-    last couple of months are downloaded live. Downloading stops after budget_s
+    last couple of weeks are downloaded live. Downloading stops after budget_s
     seconds; whatever is left counts as missing, so items read "unknown" rather
     than holding up the daily update."""
     deadline = time.monotonic() + budget_s
